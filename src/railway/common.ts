@@ -11,8 +11,6 @@ export class RailwayGQL<TVariables = Record<string, any>, TResponse = any> {
     generate(authorization: string): (variables: TVariables) => Promise<TResponse> {
         const query = this.query;
         return async function (variables: TVariables): Promise<TResponse> {
-            console.debug(`Executing GQL query: ${query} using auth ${authorization} and with variables:`, variables);
-
             const result = await fetch(CONFIG.railway.backboard, {
                 method: "POST",
                 headers: {
@@ -22,7 +20,10 @@ export class RailwayGQL<TVariables = Record<string, any>, TResponse = any> {
                 body: JSON.stringify({ query, variables })
             });
 
-            return result.json() as Promise<TResponse>;
+            const resultJson = await result.json();
+            const resultData = resultJson.data;
+
+            return resultData as Promise<TResponse>;
         }
     }
 }
