@@ -63,7 +63,14 @@ export class Log {
             // in attributes: {key: key, value: data}, find key "data"'s value
             const dataAttribute = lastLog.attributes.find(attr => attr.key === "data");
             const operationAttribute = lastLog.attributes.find(attr => attr.key === "operation");
-            if (dataAttribute) return { ...JSON.parse(dataAttribute.value), __id: id, operation: operationAttribute?.value };
+
+            if (dataAttribute) return {
+                __id: id,
+                operation: operationAttribute ? JSON.parse(operationAttribute.value) : undefined,
+                ...JSON.parse(dataAttribute.value),
+            };
+
+            throw new Error("Data not found");
         } catch (error) {
             const message = (error as any).message || "Unknown error";
             this.logger.error(operation.read, { __id: id, error: message });
