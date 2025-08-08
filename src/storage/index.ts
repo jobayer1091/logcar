@@ -43,7 +43,7 @@ export class Log {
         try {
             const result = await this.railway.api.logs.read({
                 deploymentId: CONFIG.railway.provided.deploymentId,
-                filter: `@__id:\"${id}\" AND -@operation:\"${operation.read}\" AND @severity:\"info\"`,
+                filter: `@__id:\"${id}\" AND -@operation:\"${operation.read}\" AND @level:info`,
                 limit: 1
             });
 
