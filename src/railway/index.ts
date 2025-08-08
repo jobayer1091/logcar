@@ -14,7 +14,6 @@ export class Railway {
     public api: ProcessedChunk<typeof API_CHUNKS>;
 
     constructor(config: RailwayConfig) {
-        console.debug("Initializing Railway with authorization:", config.authorization);
         this.authorization = config.authorization;
         this.api = this.initializeApi();
     }
