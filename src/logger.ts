@@ -2,7 +2,7 @@ type LogLevel = 'info' | 'warn' | 'error' | 'debug';
 
 interface LogEntry {
     timestamp: string;
-    loglevel: LogLevel;
+    level: LogLevel;
     message: string;
     meta?: Record<string, unknown>;
 }
@@ -15,7 +15,7 @@ class JsonLogger {
     private log(level: LogLevel, message: string, meta?: Record<string, unknown>) {
         const entry: LogEntry = {
             timestamp: new Date().toISOString(),
-            loglevel: level,
+            level,
             message,
             ...meta
         };
