@@ -11,13 +11,15 @@ type RailwayConfig = {
 
 export class Railway {
     authorization: string;
+    public api: ProcessedChunk<typeof API_CHUNKS>;
 
     constructor(config: RailwayConfig) {
         console.debug("Initializing Railway with authorization:", config.authorization);
         this.authorization = config.authorization;
+        this.api = this.initializeApi();
     }
 
-    public api = (() => {
+    private initializeApi(): ProcessedChunk<typeof API_CHUNKS> {
         // Real nasty way of processing gql chunks but will have to do for now lmfao
         function processChunk<T>(chunk: T, authorization: string): ProcessedChunk<T> {
             if (chunk && typeof chunk === 'object' && 'generate' in chunk && typeof chunk.generate === "function") {
@@ -34,7 +36,7 @@ export class Railway {
         }
 
         return processChunk(API_CHUNKS, this.authorization);
-    })();
+    }
 }
 
 const rail = new Railway({ authorization: "" })
