@@ -41,13 +41,14 @@ export class Log {
         this.logger.info(operation.read, { __id: id, operation: operation.read });
 
         try {
+            const filter: string = `@__id:\"${id}\" AND -@operation:\"${operation.read}\" AND @level:\"info\"`;
             const result = await this.railway.api.logs.read({
                 deploymentId: CONFIG.railway.provided.deploymentId,
-                filter: `@__id:\"${id}\" AND -@operation:\"${operation.read}\" AND @level:info`,
+                filter,
                 limit: 1
             });
 
-            console.debug("GQL Read Response:", result);
+            console.debug("GQL Read:", { result, filter });
 
             if (!result.deploymentLogs) {
                 const message = "Malformed result from Railway";
