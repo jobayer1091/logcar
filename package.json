@@ -1,0 +1,19 @@
+{
+  "name": "logcar",
+  "version": "0.0.1",
+  "description": "Database that uses Railway's logs as a storage medium",
+  "main": "index.js",
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "keywords": ["railway", "logs", "database", "storage"],
+  "author": "Fragly",
+  "license": "ISC",
+  "packageManager": "pnpm@10.13.1",
+  "devDependencies": {
+    "@types/node": "^24.2.0",
+    "dotenv": "^17.2.1"
+  }
+}
