@@ -15,7 +15,7 @@ export class RailwayGQL<TVariables = Record<string, any>, TResponse = any> {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    "Authorization": `Bearer ${authorization}`
+                    "Authorization": `${authorization}`
                 },
                 body: JSON.stringify({ query, variables })
             });
