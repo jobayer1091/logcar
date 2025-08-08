@@ -17,7 +17,7 @@ class JsonLogger {
             timestamp: new Date().toISOString(),
             level,
             message,
-            ...(meta ? { meta } : {})
+            ...meta
         };
         this.getStream(level).write(JSON.stringify(entry) + '\n');
     }
