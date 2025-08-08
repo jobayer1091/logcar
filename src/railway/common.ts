@@ -11,6 +11,8 @@ export class RailwayGQL<TVariables = Record<string, any>, TResponse = any> {
     generate(authorization: string): (variables: TVariables) => Promise<TResponse> {
         const query = this.query;
         return async function (variables: TVariables): Promise<TResponse> {
+            console.debug(`Executing GQL query: ${query} using auth ${authorization} and with variables:`, variables);
+
             const result = await fetch(CONFIG.railway.backboard, {
                 method: "POST",
                 headers: {
