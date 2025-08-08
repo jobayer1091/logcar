@@ -47,6 +47,14 @@ export class Log {
                 limit: 1
             });
 
+            console.debug("Read operation result:", result);
+
+            if (!result.deploymentLogs) {
+                const message = "Malformed result from Railway";
+                this.logger.error(operation.read, { __id: id, error: message });
+                throw new Error(message);
+            }
+
             const lastLog = result.deploymentLogs[0];
             if (!lastLog) return undefined;
             if ("operation" in lastLog.attributes && lastLog.attributes.operation === operation.delete) return undefined;
