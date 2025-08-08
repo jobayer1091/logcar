@@ -13,6 +13,7 @@ export class Railway {
     authorization: string;
 
     constructor(config: RailwayConfig) {
+        console.debug("Initializing Railway with authorization:", config.authorization);
         this.authorization = config.authorization;
     }
 

@@ -21,6 +21,8 @@ app.get("/read", (req, res) => {
         return;
     }
 
+    console.log("Read operation initiated:", { collectionId, authHeader });
+
     const log = new Log({ railwayAuth: authHeader });
 
     log.read(collectionId).then((result) => {
