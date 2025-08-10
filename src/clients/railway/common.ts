@@ -1,4 +1,4 @@
-import { CONFIG } from "../config";
+import { CONFIG } from "../../config";
 
 export class RailwayGQL<TVariables = Record<string, any>, TResponse = any> {
     private query: string;
