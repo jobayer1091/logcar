@@ -90,6 +90,6 @@ const query = new RailwayGQL<GetEnvironmentLogsVariables, GetEnvironmentLogsResp
     }
     timestamp
   }
-}}`);
+}`);
 
 export default query;
