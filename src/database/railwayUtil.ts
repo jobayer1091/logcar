@@ -119,17 +119,20 @@ export class RailwayUtil extends Railway {
         const processedRecords: any[] = [];
 
         for (const logObj of logObjects) {
+            this.logger.info(`Processing log object for ID ${logObj.__id}`, { logObj });
+
             // Check if this is a chunked record that needs reassembly
             if (typeof logObj.total === 'number' && logObj.total > 1) {
                 // This is a multi-chunk record, fetch all chunks
                 const allChunks = await this.fetchAllChunksForRecord(
-                    logObj.__id, 
-                    logObj.operation, 
+                    logObj.__id,
+                    logObj.operation,
                     logObj.total
                 );
 
                 if (allChunks.length === logObj.total) {
                     // We got all chunks, reassemble
+                    this.logger.info(`Reassembling ${logObj.total} chunks for ID ${logObj.__id}`, { chunks: allChunks });
                     const reassembledData = this.reassembleChunks(allChunks);
                     processedRecords.push({
                         __id: logObj.__id,
@@ -169,6 +172,7 @@ export class RailwayUtil extends Railway {
             });
 
             if (result?.deploymentLogs) return result.deploymentLogs.map(log => this.logToData(log));
+            else this.logger.warn(`No additional chunks found for ID ${id} with operation ${operation}`);
         } catch (error) {
             this.logger.warn(`Failed to fetch chunks for ID ${id}:`, { error: (error as any).message });
         }
