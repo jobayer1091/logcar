@@ -126,17 +126,21 @@ export class RailwayUtil extends Railway {
             this.logger.info(`Processing log object for ID ${logObj.__id}`, { logObj });
 
             // Check if this is a chunked record that needs reassembly
-            if (typeof logObj.__total === 'number' && logObj.__total > 1) {
+            const totalChunks = typeof logObj.__total === 'number'
+                ? logObj.__total
+                : (typeof logObj.__total === 'string' ? parseInt(logObj.__total, 10) : undefined);
+
+            if (totalChunks && totalChunks > 1) {
                 // This is a multi-chunk record, fetch all chunks
                 const allChunks = await this.fetchAllChunksForRecord(
                     logObj.__id,
                     logObj.__operation,
-                    logObj.__total
+                    totalChunks
                 );
 
-                if (allChunks.length === logObj.__total) {
+                if (allChunks.length === totalChunks) {
                     // We got all chunks, reassemble
-                    this.logger.info(`Reassembling ${logObj.__total} chunks for ID ${logObj.__id}`, { chunks: allChunks });
+                    this.logger.info(`Reassembling ${totalChunks} chunks for ID ${logObj.__id}`, { chunks: allChunks });
                     const reassembledData = this.reassembleChunks(allChunks);
                     processedRecords.push({
                         __id: logObj.__id,
@@ -167,12 +171,12 @@ export class RailwayUtil extends Railway {
     }
 
     /** Fetches all chunks for a specific record that needs reassembly */
-    private async fetchAllChunksForRecord(id: string, operation: string, expectedTotal: number): Promise<any[]> {
+    private async fetchAllChunksForRecord(id: string, operation: string, limit: number): Promise<any[]> {
         try {
             const result = await this.api.logs.read({
                 deploymentId: CONFIG.railway.provided.deploymentId!,
-                limit: expectedTotal, // Request exactly the number of chunks we need
                 filter: `@__id:"${id}" AND @operation:"${operation}"`,
+                limit,
             });
 
             if (result?.deploymentLogs) return result.deploymentLogs.map(log => this.logToData(log));
