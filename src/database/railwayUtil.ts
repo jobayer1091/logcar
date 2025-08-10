@@ -76,6 +76,7 @@ export class RailwayUtil extends Railway {
         return conditions;
     }
 
+    /** Searches for logs based on the provided parameters */
     async dataSearch(params: SearchParameters) {
         if (!CONFIG.railway.provided.deploymentId) throw new Error("Missing deploymentId");
 
@@ -101,8 +102,7 @@ export class RailwayUtil extends Railway {
         console.debug("GQL Read:", { result, filter });
 
         if (!result || !result.deploymentLogs) {
-            const message = "Malformed result from Railway";
-            this.logger.error("dataSearch", { params, result, error: message });
+            const message = !result ? "No result returned from read API query" : "No deployment logs attached to read API query result";
             throw new Error(message);
         }
 
