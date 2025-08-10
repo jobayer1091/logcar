@@ -56,14 +56,17 @@ export class RailwayUtil extends Railway {
         const totalAttr = fromAttr("total");
 
         const parsedDataAttr = dataAttr ? JSON.parse(dataAttr) : undefined;
-        const dataObject = { ...parsedDataAttr };
 
-        if (idAttr) dataObject.__id = JSON.parse(idAttr);
-        if (operationAttr) dataObject.__operation = JSON.parse(operationAttr);
-        if (indexAttr) dataObject.__index = JSON.parse(indexAttr);
-        if (totalAttr) dataObject.__total = JSON.parse(totalAttr);
+        // Clean structure: metadata at top level, actual data nested
+        const logObject: any = {};
 
-        return dataObject;
+        if (idAttr) logObject.__id = JSON.parse(idAttr);
+        if (operationAttr) logObject.__operation = JSON.parse(operationAttr);
+        if (indexAttr) logObject.__index = JSON.parse(indexAttr);
+        if (totalAttr) logObject.__total = JSON.parse(totalAttr);
+        if (parsedDataAttr !== undefined) logObject.data = parsedDataAttr;
+
+        return logObject;
     }
 
     /** Builds a filter string from search parameters */
@@ -86,16 +89,7 @@ export class RailwayUtil extends Railway {
     /** Converts log objects to proper Chunk format and reassembles them */
     private reassembleLogChunks(logChunks: any[]): any {
         const chunks: Chunk[] = logChunks.map(logObj => ({
-            data: (() => {
-                // this cleanup method makes me sick
-                // in hindsight i shouldn't have stored data along with metadata lol
-                const cleanChunk = { ...logObj };
-                delete cleanChunk.__id;
-                delete cleanChunk.__operation;
-                delete cleanChunk.__index;
-                delete cleanChunk.__total;
-                return cleanChunk;
-            })(),
+            data: logObj.data,
             index: logObj.__index,
             total: logObj.__total
         }));
@@ -133,11 +127,12 @@ export class RailwayUtil extends Railway {
                     });
                 }
             } else {
-                // Single chunk or regular data
-                const result = { ...logObj };
-                delete result.__index;
-                delete result.__total;
-                processedRecords.push(result);
+                // Single chunk or regular data - extract the data directly
+                processedRecords.push({
+                    __id: logObj.__id,
+                    data: logObj.data,
+                    operation: logObj.__operation
+                });
             }
         }
 
