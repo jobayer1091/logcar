@@ -23,8 +23,6 @@ export class RailwayGQL<TVariables = Record<string, any>, TResponse = any> {
             const resultJson = await result.json();
             const resultData = resultJson.data;
 
-            console.log(JSON.stringify({ query, variables, resultJson }));
-
             return resultData as Promise<TResponse>;
         }
     }

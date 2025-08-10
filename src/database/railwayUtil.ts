@@ -203,8 +203,6 @@ export class RailwayUtil extends Railway {
         const logObjects = logs.slice(0, limit).map(log => this.logToData(log)) as any[];
         const processedRecords = await this.processLogObjects(logObjects);
 
-        this.logger.info(`Processed ${processedRecords.length} records for ID ${logObjects[0]?.id}`, { processedRecords });
-
         return limit === 1 ? processedRecords[0] : processedRecords;
     }
 
