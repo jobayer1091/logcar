@@ -167,17 +167,15 @@ export class RailwayUtil extends Railway {
     /** Fetches all chunks for a specific record that needs reassembly */
     private async fetchAllChunksForRecord(id: string, operation: string, limit: number): Promise<any[]> {
         try {
+            const filter = `@__id:"${id}"` // AND @operation:"${operation}";
+
             const result = await this.api.logs.read({
                 deploymentId: CONFIG.railway.provided.deploymentId!,
-                filter: `@__id:"${id}" AND @operation:"${operation}"`,
+                filter,
                 limit,
             });
 
-            this.logger.info(`Fetching all chunks for ID ${id} with operation ${operation}`, {
-                limit,
-                result,
-                filter: `@__id:"${id}" AND @operation:"${operation}"`,
-            });
+            this.logger.info(`Fetching all chunks for ID ${id} with operation ${operation}`, { limit, result, filter });
 
             if (result?.deploymentLogs) return result.deploymentLogs.map(log => this.logToData(log));
             else this.logger.warn(`No additional chunks found for ID ${id} with operation ${operation}`);
