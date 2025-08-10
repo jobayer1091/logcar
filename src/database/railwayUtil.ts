@@ -49,13 +49,17 @@ export class RailwayUtil extends Railway {
     logToData(log: DeploymentLog): object {
         const idAttr = this.fetchValueFromAttributes(log.attributes, "__id");
         const dataAttr = this.fetchValueFromAttributes(log.attributes, "data");
-        const operationAttr = this.fetchValueFromAttributes(log.attributes, "operation");
+        const operationAttr = this.fetchValueFromAttributes(log.attributes, "__operation");
+        const indexAttr = this.fetchValueFromAttributes(log.attributes, "__index");
+        const totalAttr = this.fetchValueFromAttributes(log.attributes, "__total");
 
         const parsedDataAttr = dataAttr ? JSON.parse(dataAttr) : undefined;
         const dataObject = { ...parsedDataAttr };
 
         if (idAttr) dataObject.__id = idAttr;
-        if (operationAttr) dataObject.operation = JSON.parse(operationAttr);
+        if (operationAttr) dataObject.__operation = JSON.parse(operationAttr);
+        if (indexAttr) dataObject.__index = indexAttr;
+        if (totalAttr) dataObject.__total = totalAttr;
 
         return dataObject;
     }
@@ -66,7 +70,7 @@ export class RailwayUtil extends Railway {
         const prefix = exclude ? "-" : "";
 
         if (params.id) conditions.push(`${prefix}@__id:"${params.id}"`);
-        if (params.operation) conditions.push(`${prefix}@operation:"${params.operation}"`);
+        if (params.operation) conditions.push(`${prefix}@__operation:"${params.operation}"`);
 
         if (params.attributes) {
             for (const [key, value] of Object.entries(params.attributes)) {
@@ -122,39 +126,39 @@ export class RailwayUtil extends Railway {
             this.logger.info(`Processing log object for ID ${logObj.__id}`, { logObj });
 
             // Check if this is a chunked record that needs reassembly
-            if (typeof logObj.total === 'number' && logObj.total > 1) {
+            if (typeof logObj.__total === 'number' && logObj.__total > 1) {
                 // This is a multi-chunk record, fetch all chunks
                 const allChunks = await this.fetchAllChunksForRecord(
                     logObj.__id,
-                    logObj.operation,
-                    logObj.total
+                    logObj.__operation,
+                    logObj.__total
                 );
 
-                if (allChunks.length === logObj.total) {
+                if (allChunks.length === logObj.__total) {
                     // We got all chunks, reassemble
-                    this.logger.info(`Reassembling ${logObj.total} chunks for ID ${logObj.__id}`, { chunks: allChunks });
+                    this.logger.info(`Reassembling ${logObj.__total} chunks for ID ${logObj.__id}`, { chunks: allChunks });
                     const reassembledData = this.reassembleChunks(allChunks);
                     processedRecords.push({
                         __id: logObj.__id,
                         data: reassembledData,
-                        operation: logObj.operation
+                        operation: logObj.__operation
                     });
                 } else {
                     // Missing some chunks, log warning but include what we have
-                    this.logger.warn(`Incomplete chunked record for ID ${logObj.__id}. Expected ${logObj.total}, got ${allChunks.length}`);
+                    this.logger.warn(`Incomplete chunked record for ID ${logObj.__id}. Expected ${logObj.__total}, got ${allChunks.length}`);
                     const partialData = this.reassembleChunks(allChunks);
                     processedRecords.push({
                         __id: logObj.__id,
                         data: partialData,
-                        operation: logObj.operation,
+                        operation: logObj.__operation,
                         _incomplete: true
                     });
                 }
             } else {
                 // Single chunk or regular data
                 const result = { ...logObj };
-                delete result.index;
-                delete result.total;
+                delete result.__index;
+                delete result.__total;
                 processedRecords.push(result);
             }
         }
@@ -168,7 +172,7 @@ export class RailwayUtil extends Railway {
             const result = await this.api.logs.read({
                 deploymentId: CONFIG.railway.provided.deploymentId!,
                 limit: expectedTotal, // Request exactly the number of chunks we need
-                filter: `@__id:"${id}" AND @operation:"${operation}"`,
+                filter: `@__id:"${id}" AND @__operation:"${operation}"`,
             });
 
             if (result?.deploymentLogs) return result.deploymentLogs.map(log => this.logToData(log));
