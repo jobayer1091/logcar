@@ -54,6 +54,9 @@ async function transformReq(req: IncomingMessage): Promise<RequestTransformed> {
         const urlParts = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
         const searchParams = urlParts.searchParams;
 
+        console.log('URL:', req.url);
+        console.log('SearchParams:', Array.from(searchParams.entries()));
+
         for (const [key, value] of searchParams.entries()) {
             if (query[key]) {
                 if (Array.isArray(query[key])) query[key].push(value);
@@ -62,6 +65,7 @@ async function transformReq(req: IncomingMessage): Promise<RequestTransformed> {
                 query[key] = value;
             }
         }
+        console.log('Parsed query:', query);
     }
 
     // Parse request body
