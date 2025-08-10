@@ -172,8 +172,8 @@ export class RailwayUtil extends Railway {
             const result = await this.api.logs.environmentLogs({
                 environmentId: CONFIG.railway.provided.environmentId!,
                 filter,
-                beforeDate: new Date().toISOString(),
-                beforeLimit: limit,
+                afterDate: new Date().toISOString(),
+                afterLimit: limit,
             });
 
             this.logger.info(`Fetching all chunks for ID ${id} with operation ${operation}`, { limit, result, filter });
@@ -209,8 +209,8 @@ export class RailwayUtil extends Railway {
         const result = await this.api.logs.environmentLogs({
             environmentId: CONFIG.railway.provided.environmentId,
             filter,
-            beforeDate: new Date().toISOString(),
-            beforeLimit: limit,
+            afterDate: new Date().toISOString(),
+            afterLimit: limit,
         });
 
         if (!result || !result.environmentLogs) {
@@ -222,7 +222,7 @@ export class RailwayUtil extends Railway {
         if (!logs || logs.length === 0) return undefined;
 
         // Convert logs to data objects
-        const logObjects = logs.map(log => this.logToData(log)) as any[];
+        const logObjects = logs.slice(0, limit).map(log => this.logToData(log)) as any[];
         const processedRecords = await this.processLogObjects(logObjects);
 
         return limit === 1 ? processedRecords[0] : processedRecords;
