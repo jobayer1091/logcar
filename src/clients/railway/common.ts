@@ -20,8 +20,7 @@ export class RailwayGQL<TVariables = Record<string, any>, TResponse = any> {
                 body: JSON.stringify({ query, variables })
             });
 
-            console.log(query);
-            console.log(variables);
+            console.log(JSON.stringify({ query, variables }));
 
             const resultJson = await result.json();
             const resultData = resultJson.data;
