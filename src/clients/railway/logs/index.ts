@@ -1,6 +1,10 @@
-import read from "./read";
-export * from "./read";
+import deploymentLogs from "./deploymentLogs";
+export * from "./deploymentLogs";
+
+import environmentLogs from "./environmentLogs";
+export * from "./environmentLogs";
 
 export default {
-    read
+    deploymentLogs,
+    environmentLogs
 };

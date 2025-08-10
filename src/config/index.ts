@@ -24,6 +24,8 @@ export const CONFIG = {
         provided: {
             /** The ID for the current deployment */
             deploymentId: str("RAILWAY_DEPLOYMENT_ID"),
+            /** The ID for the current environment */
+            environmentId: str("RAILWAY_ENVIRONMENT_ID"),
         }
     }
 }

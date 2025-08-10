@@ -1,7 +1,7 @@
 import { LogOperation, operation } from ".";
 import { CONFIG } from "../config";
 import JsonLogger from "../logger";
-import { DeploymentLogAttributes, Railway, RailwayConfig, DeploymentLog } from "../clients/railway";
+import { EnvironmentLogAttributes, Railway, RailwayConfig, EnvironmentLog } from "../clients/railway";
 import { Chunk } from "./chunkUtil";
 
 /** Configuration for search parameters */
@@ -39,14 +39,14 @@ export class RailwayUtil extends Railway {
     }
 
     /** Given a list of log attributes, find and return the value for a specific key */
-    fetchValueFromAttributes(attributes: DeploymentLogAttributes[], key: string): string | undefined {
+    fetchValueFromAttributes(attributes: EnvironmentLogAttributes[], key: string): string | undefined {
         const attribute = attributes.find(attr => attr.key === key);
         if (attribute) return attribute.value;
         else return undefined;
     }
 
-    /** Converts a DeploymentLog to a data object */
-    logToData(log: DeploymentLog): object {
+    /** Converts a EnvironmentLog to a data object */
+    logToData(log: EnvironmentLog): object {
         const fromAttr = (str: string) => this.fetchValueFromAttributes(log.attributes, str);
 
         const idAttr = fromAttr("__id");
@@ -169,15 +169,16 @@ export class RailwayUtil extends Railway {
         try {
             const filter = `@__id:"${id}" AND @operation:"${operation}"`;
 
-            const result = await this.api.logs.read({
-                deploymentId: CONFIG.railway.provided.deploymentId!,
+            const result = await this.api.logs.environmentLogs({
+                environmentId: CONFIG.railway.provided.environmentId!,
                 filter,
-                limit,
+                beforeDate: new Date().toISOString(),
+                beforeLimit: limit,
             });
 
             this.logger.info(`Fetching all chunks for ID ${id} with operation ${operation}`, { limit, result, filter });
 
-            if (result?.deploymentLogs) return result.deploymentLogs.map(log => this.logToData(log));
+            if (result?.environmentLogs) return result.environmentLogs.map(log => this.logToData(log));
             else this.logger.warn(`No additional chunks found for ID ${id} with operation ${operation}`);
         } catch (error) {
             this.logger.warn(`Failed to fetch chunks for ID ${id}:`, { error: (error as any).message });
@@ -188,7 +189,7 @@ export class RailwayUtil extends Railway {
 
     /** Searches for logs based on the provided parameters */
     async dataSearch(params: SearchParameters) {
-        if (!CONFIG.railway.provided.deploymentId) throw new Error("Missing deploymentId");
+        if (!CONFIG.railway.provided.environmentId) throw new Error("Missing environmentId");
 
         // Build filter from parameters
         const includeConditions = this.buildFilter(params);
@@ -205,18 +206,19 @@ export class RailwayUtil extends Railway {
 
         const limit = params.limit || 1;
 
-        const result = await this.api.logs.read({
-            deploymentId: CONFIG.railway.provided.deploymentId,
-            limit,
+        const result = await this.api.logs.environmentLogs({
+            environmentId: CONFIG.railway.provided.environmentId,
             filter,
+            beforeDate: new Date().toISOString(),
+            beforeLimit: limit,
         });
 
-        if (!result || !result.deploymentLogs) {
-            const message = !result ? "No result returned from read API query" : "No deployment logs attached to read API query result";
+        if (!result || !result.environmentLogs) {
+            const message = !result ? "No result returned from environmentLogs API query" : "No environment logs attached to environmentLogs API query result";
             throw new Error(message);
         }
 
-        const logs = result.deploymentLogs;
+        const logs = result.environmentLogs;
         if (!logs || logs.length === 0) return undefined;
 
         // Convert logs to data objects
