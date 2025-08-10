@@ -8,7 +8,7 @@ export const CONFIG = {
     railway: {
         /** The GraphQL endpoint for the Railway backboard */
         backboard: process.env.RAILWAY_BACKBOARD_URL || `https://backboard.railway.com/graphql/v2`,
-
+        
         /** Railway provided variables */
         provided: {
             /** The ID for the current deployment */
