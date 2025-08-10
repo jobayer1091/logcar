@@ -173,6 +173,8 @@ export class RailwayUtil extends Railway {
                 limit,
             });
 
+            this.logger.info(`Fetching all chunks for ID ${id} with operation ${operation}`, { limit, result });
+
             if (result?.deploymentLogs) return result.deploymentLogs.map(log => this.logToData(log));
             else this.logger.warn(`No additional chunks found for ID ${id} with operation ${operation}`);
         } catch (error) {
