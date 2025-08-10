@@ -47,7 +47,7 @@ export class RailwayUtil extends Railway {
 
     /** Converts a DeploymentLog to a data object */
     logToData(log: DeploymentLog): object {
-        const idAttr = this.fetchValueFromAttributes(log.attributes, "id");
+        const idAttr = this.fetchValueFromAttributes(log.attributes, "__id");
         const dataAttr = this.fetchValueFromAttributes(log.attributes, "data");
         const operationAttr = this.fetchValueFromAttributes(log.attributes, "operation");
         const indexAttr = this.fetchValueFromAttributes(log.attributes, "index");
