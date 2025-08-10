@@ -168,30 +168,14 @@ export class RailwayUtil extends Railway {
         const processedRecords: any[] = [];
 
         for (const logObj of logObjects) {
-            this.logger.info(`Processing log object for ID ${logObj.__id}`, {
-                logObj,
-                hasTotal: logObj.__total,
-                totalValue: logObj.__total,
-                hasIndex: logObj.__index,
-                indexValue: logObj.__index
-            });
-
             // Check if this is a chunked record that needs reassembly
             if (logObj.__total && logObj.__total > 1) {
                 // This is a multi-chunk record, fetch all chunks
                 const allChunks = await this.fetchAllChunksForRecord(logObj.__id, logObj.__operation, logObj.__total);
 
-                this.logger.info(`Got ${allChunks.length} chunks for ID ${logObj.__id}`, {
-                    expected: logObj.__total,
-                    received: allChunks.length,
-                    chunks: allChunks.map(c => ({ id: c.__id, index: c.__index, total: c.__total }))
-                });
-
                 if (allChunks.length === logObj.__total) {
                     // We got all chunks, reassemble
-                    this.logger.info(`Reassembling ${logObj.__total} chunks for ID ${logObj.__id}`);
                     const reassembledData = this.reassembleChunks(allChunks);
-                    this.logger.info(`Reassembled data for ID ${logObj.__id}`, { reassembledData });
                     processedRecords.push({
                         __id: logObj.__id,
                         data: reassembledData,
@@ -210,7 +194,6 @@ export class RailwayUtil extends Railway {
                 }
             } else {
                 // Single chunk or regular data
-                this.logger.info(`Single chunk data for ID ${logObj.__id}`, { logObj });
                 const result = { ...logObj };
                 delete result.__index;
                 delete result.__total;
@@ -232,8 +215,6 @@ export class RailwayUtil extends Railway {
                 afterDate: new Date().toISOString(),
                 afterLimit: limit,
             });
-
-            this.logger.info(`Fetching all chunks for ID ${id} with operation ${operation}`, { limit, result, filter });
 
             if (result?.environmentLogs) return result.environmentLogs.map(log => this.logToData(log));
             else this.logger.warn(`No additional chunks found for ID ${id} with operation ${operation}`);
@@ -281,6 +262,8 @@ export class RailwayUtil extends Railway {
         // Convert logs to data objects
         const logObjects = logs.slice(0, limit).map(log => this.logToData(log)) as any[];
         const processedRecords = await this.processLogObjects(logObjects);
+
+        this.logger.info(`Processed ${processedRecords.length} records for ID ${logObjects[0]?.id}`, { processedRecords });
 
         return limit === 1 ? processedRecords[0] : processedRecords;
     }
