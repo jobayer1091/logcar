@@ -51,7 +51,6 @@ async function transformReq(req: IncomingMessage): Promise<RequestTransformed> {
 
     // Parse query parameters
     if (req.url) {
-        // Decode HTML entities in the URL
         const decodedUrl = req.url
             .replace(/&amp;/g, '&')
             .replace(/&lt;/g, '<')
@@ -62,10 +61,6 @@ async function transformReq(req: IncomingMessage): Promise<RequestTransformed> {
         const urlParts = new URL(decodedUrl, `http://${req.headers.host || 'localhost'}`);
         const searchParams = urlParts.searchParams;
 
-        console.log('URL (original):', req.url);
-        console.log('URL (decoded):', decodedUrl);
-        console.log('SearchParams:', Array.from(searchParams.entries()));
-
         for (const [key, value] of searchParams.entries()) {
             if (query[key]) {
                 if (Array.isArray(query[key])) query[key].push(value);
@@ -74,7 +69,6 @@ async function transformReq(req: IncomingMessage): Promise<RequestTransformed> {
                 query[key] = value;
             }
         }
-        console.log('Parsed query:', query);
     }
 
     // Parse request body
