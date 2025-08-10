@@ -21,11 +21,13 @@ app.get("/read", (req, res) => {
         return;
     }
 
+    const isRaw = req.query.raw === "true" || req.query.raw === "1";
+
     const logRail = new LogRail({ railwayAuth: authHeader });
 
     logRail.read(collectionId).then((result) => {
-        console.debug("Read operation result:", result);
-        res.json(result);
+        if (isRaw) res.json(result.data);
+        else res.json(result);
     }).catch((error) => {
         const message = (error as any).message || "Unknown error";
         console.error("Error occurred during read operation:", error);
