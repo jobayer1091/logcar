@@ -84,40 +84,83 @@ export class RailwayUtil extends Railway {
     }
 
     /** Reassembles chunks back into original data */
-    private reassembleChunks(chunks: Chunk[]): any {
+    private reassembleChunks(chunks: any[]): any {
         if (chunks.length === 0) return undefined;
-        if (chunks.length === 1) return chunks[0].data;
+        if (chunks.length === 1) {
+            // Single chunk - return the data part (excluding metadata)
+            const chunk = { ...chunks[0] };
+            delete chunk.__id;
+            delete chunk.__operation;
+            delete chunk.__index;
+            delete chunk.__total;
+            return chunk;
+        }
 
-        const sortedChunks = chunks.sort((a, b) => (a.index || 0) - (b.index || 0));
+        // Sort chunks by __index to ensure correct order
+        const sortedChunks = chunks.sort((a, b) => (a.__index || 0) - (b.__index || 0));
 
-        const firstChunk = sortedChunks[0];
-        const firstData = firstChunk.data;
+        // Extract data from first chunk to determine type
+        const firstChunk = { ...sortedChunks[0] };
+        delete firstChunk.__id;
+        delete firstChunk.__operation;
+        delete firstChunk.__index;
+        delete firstChunk.__total;
 
         // Handle string: simply join
-        if (typeof firstData === 'string') {
-            return sortedChunks.map(chunk => chunk.data).join('');
+        if (typeof firstChunk === 'object' && firstChunk !== null) {
+            // Check if it looks like a string chunk (single property with string value)
+            const keys = Object.keys(firstChunk);
+            if (keys.length === 1 && typeof firstChunk[keys[0]] === 'string') {
+                return sortedChunks.map(chunk => {
+                    const cleanChunk = { ...chunk };
+                    delete cleanChunk.__id;
+                    delete cleanChunk.__operation;
+                    delete cleanChunk.__index;
+                    delete cleanChunk.__total;
+                    return cleanChunk[keys[0]];
+                }).join('');
+            }
         }
 
         // Handle array: flatten and combine
-        if (Array.isArray(firstData)) {
+        if (Array.isArray(firstChunk)) {
             const result: any[] = [];
             for (const chunk of sortedChunks) {
-                if (Array.isArray(chunk.data)) result.push(...chunk.data);
+                const cleanChunk = { ...chunk };
+                delete cleanChunk.__id;
+                delete cleanChunk.__operation;
+                delete cleanChunk.__index;
+                delete cleanChunk.__total;
+                if (Array.isArray(cleanChunk)) result.push(...cleanChunk);
             }
             return result;
         }
 
         // Handle object: merge
-        if (typeof firstData === 'object' && firstData !== null) {
+        if (typeof firstChunk === 'object' && firstChunk !== null) {
             const result: Record<string, any> = {};
             for (const chunk of sortedChunks) {
-                if (typeof chunk.data === 'object' && chunk.data !== null) Object.assign(result, chunk.data);
+                const cleanChunk = { ...chunk };
+                delete cleanChunk.__id;
+                delete cleanChunk.__operation;
+                delete cleanChunk.__index;
+                delete cleanChunk.__total;
+                if (typeof cleanChunk === 'object' && cleanChunk !== null) {
+                    Object.assign(result, cleanChunk);
+                }
             }
             return result;
         }
 
-        // Handle fallback
-        return sortedChunks.map(chunk => String(chunk.data)).join('');
+        // Handle fallback - treat as strings
+        return sortedChunks.map(chunk => {
+            const cleanChunk = { ...chunk };
+            delete cleanChunk.__id;
+            delete cleanChunk.__operation;
+            delete cleanChunk.__index;
+            delete cleanChunk.__total;
+            return String(cleanChunk);
+        }).join('');
     }
 
     /** Groups chunks by their __id and reassembles them */
@@ -125,17 +168,30 @@ export class RailwayUtil extends Railway {
         const processedRecords: any[] = [];
 
         for (const logObj of logObjects) {
-            this.logger.info(`Processing log object for ID ${logObj.__id}`, { logObj });
+            this.logger.info(`Processing log object for ID ${logObj.__id}`, {
+                logObj,
+                hasTotal: logObj.__total,
+                totalValue: logObj.__total,
+                hasIndex: logObj.__index,
+                indexValue: logObj.__index
+            });
 
             // Check if this is a chunked record that needs reassembly
             if (logObj.__total && logObj.__total > 1) {
                 // This is a multi-chunk record, fetch all chunks
                 const allChunks = await this.fetchAllChunksForRecord(logObj.__id, logObj.__operation, logObj.__total);
 
+                this.logger.info(`Got ${allChunks.length} chunks for ID ${logObj.__id}`, {
+                    expected: logObj.__total,
+                    received: allChunks.length,
+                    chunks: allChunks.map(c => ({ id: c.__id, index: c.__index, total: c.__total }))
+                });
+
                 if (allChunks.length === logObj.__total) {
                     // We got all chunks, reassemble
-                    this.logger.info(`Reassembling ${logObj.__total} chunks for ID ${logObj.__id}`, { chunks: allChunks });
+                    this.logger.info(`Reassembling ${logObj.__total} chunks for ID ${logObj.__id}`);
                     const reassembledData = this.reassembleChunks(allChunks);
+                    this.logger.info(`Reassembled data for ID ${logObj.__id}`, { reassembledData });
                     processedRecords.push({
                         __id: logObj.__id,
                         data: reassembledData,
@@ -154,6 +210,7 @@ export class RailwayUtil extends Railway {
                 }
             } else {
                 // Single chunk or regular data
+                this.logger.info(`Single chunk data for ID ${logObj.__id}`, { logObj });
                 const result = { ...logObj };
                 delete result.__index;
                 delete result.__total;
