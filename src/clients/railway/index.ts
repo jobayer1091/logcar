@@ -1,11 +1,13 @@
 import { ProcessedChunk } from "./common";
+
 import logs from "./logs";
+export * from "./logs";
 
 const API_CHUNKS = {
     logs
 };
 
-type RailwayConfig = {
+export type RailwayConfig = {
     authorization: string;
 }
 

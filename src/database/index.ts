@@ -1,29 +1,31 @@
 import JsonLogger from "../logger";
 import { randomUUID } from "crypto";
-import { Railway } from "../railway";
 import { CONFIG } from "../config";
+import RailwayUtil from "./railwayUtil";
 
-const operation = {
+export const operation = {
     create: "create",
     read: "read",
     update: "update",
     delete: "delete"
 }
 
+export type LogOperation = keyof typeof operation;
+
 type LogConfig = {
     railwayAuth: string;
-
 }
 
-export class Log {
+/** Manages logging to and fetching logs from Railway */
+export class LogRail {
     logger: JsonLogger;
     railwayAuth: string;
-    railway: Railway;
+    railUtil: RailwayUtil;
 
     constructor(config: LogConfig) {
-        this.logger = new JsonLogger();
+        this.logger = new JsonLogger({ origin: "LogRail" });
         this.railwayAuth = config.railwayAuth;
-        this.railway = new Railway({ authorization: this.railwayAuth });
+        this.railUtil = new RailwayUtil({ authorization: this.railwayAuth });
     }
 
     create<T = object>(data: T): { data: T; __id: string } {
@@ -41,36 +43,8 @@ export class Log {
         this.logger.info(operation.read, { __id: id, operation: operation.read });
 
         try {
-            const filter: string = `@__id:"${id}" AND -@operation:"${operation.read}"`;
-            const result = await this.railway.api.logs.read({
-                deploymentId: CONFIG.railway.provided.deploymentId,
-                filter,
-                limit: 1
-            });
-
-            console.debug("GQL Read:", { result, filter });
-
-            if (!result.deploymentLogs) {
-                const message = "Malformed result from Railway";
-                this.logger.error(operation.read, { __id: id, error: message });
-                throw new Error(message);
-            }
-
-            const lastLog = result.deploymentLogs[0];
-            if (!lastLog) return undefined;
-            if ("operation" in lastLog.attributes && lastLog.attributes.operation === operation.delete) return undefined;
-
-            // in attributes: {key: key, value: data}, find key "data"'s value
-            const dataAttribute = lastLog.attributes.find(attr => attr.key === "data");
-            const operationAttribute = lastLog.attributes.find(attr => attr.key === "operation");
-
-            if (dataAttribute) return {
-                __id: id,
-                operation: operationAttribute ? JSON.parse(operationAttribute.value) : undefined,
-                ...JSON.parse(dataAttribute.value),
-            };
-
-            throw new Error("Data not found");
+            const data = await this.railUtil.dataFromId(id);
+            if (data) return data;
         } catch (error) {
             const message = (error as any).message || "Unknown error";
             this.logger.error(operation.read, { __id: id, error: message });

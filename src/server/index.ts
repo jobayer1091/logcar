@@ -1,5 +1,5 @@
 import { CONFIG } from "../config";
-import { Log } from "../storage";
+import { LogRail } from "../database";
 import { Server } from "./server";
 
 const app = new Server();
@@ -21,9 +21,9 @@ app.get("/read", (req, res) => {
         return;
     }
 
-    const log = new Log({ railwayAuth: authHeader });
+    const logRail = new LogRail({ railwayAuth: authHeader });
 
-    log.read(collectionId).then((result) => {
+    logRail.read(collectionId).then((result) => {
         console.debug("Read operation result:", result);
         res.json(result);
     }).catch((error) => {
@@ -45,8 +45,8 @@ app.post("/create", (req, res) => {
         return;
     }
 
-    const log = new Log({ railwayAuth: authHeader });
-    const result = log.create(data);
+    const logRail = new LogRail({ railwayAuth: authHeader });
+    const result = logRail.create(data);
 
     res.json(result);
 })
@@ -64,8 +64,8 @@ app.put("/update", (req, res) => {
         return;
     }
 
-    const log = new Log({ railwayAuth: authHeader });
-    const result = log.update(id, data);
+    const logRail = new LogRail({ railwayAuth: authHeader });
+    const result = logRail.update(id, data);
 
     res.json(result);
 })
@@ -83,8 +83,8 @@ app.delete("/delete", (req, res) => {
         return;
     }
 
-    const log = new Log({ railwayAuth: authHeader });
-    log.delete(id);
+    const logRail = new LogRail({ railwayAuth: authHeader });
+    logRail.delete(id);
 
     res.json({ success: true });
 })
