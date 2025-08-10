@@ -115,96 +115,65 @@ export class RailwayUtil extends Railway {
     }
 
     /** Groups chunks by their __id and reassembles them */
-    private groupAndReassembleChunks(logObjects: any[]): any[] {
-        // Group by __id
-        const groups = new Map<string, any[]>();
-        for (const obj of logObjects) {
-            const id = obj.__id;
-            if (!id) continue;
+    private async processLogObjects(logObjects: any[]): Promise<any[]> {
+        const processedRecords: any[] = [];
 
-            if (!groups.has(id)) groups.set(id, []);
-            groups.get(id)!.push(obj);
-        }
+        for (const logObj of logObjects) {
+            // Check if this is a chunked record that needs reassembly
+            if (typeof logObj.total === 'number' && logObj.total > 1) {
+                // This is a multi-chunk record, fetch all chunks
+                const allChunks = await this.fetchAllChunksForRecord(
+                    logObj.__id, 
+                    logObj.operation, 
+                    logObj.total
+                );
 
-        // Reassemble each group
-        const reassembled: any[] = [];
-        for (const [id, chunks] of groups) {
-            const firstChunk = chunks[0];
-            const hasChunkInfo = typeof firstChunk.total === 'number' && typeof firstChunk.index === 'number';
-
-            if (!hasChunkInfo || firstChunk.total === 1) {
-                // Single chunk or non-chunked data
-                const result = { ...firstChunk };
+                if (allChunks.length === logObj.total) {
+                    // We got all chunks, reassemble
+                    const reassembledData = this.reassembleChunks(allChunks);
+                    processedRecords.push({
+                        __id: logObj.__id,
+                        data: reassembledData,
+                        operation: logObj.operation
+                    });
+                } else {
+                    // Missing some chunks, log warning but include what we have
+                    this.logger.warn(`Incomplete chunked record for ID ${logObj.__id}. Expected ${logObj.total}, got ${allChunks.length}`);
+                    const partialData = this.reassembleChunks(allChunks);
+                    processedRecords.push({
+                        __id: logObj.__id,
+                        data: partialData,
+                        operation: logObj.operation,
+                        _incomplete: true
+                    });
+                }
+            } else {
+                // Single chunk or regular data
+                const result = { ...logObj };
                 delete result.index;
                 delete result.total;
-                reassembled.push(result);
-            } else {
-                // Multi-chunk data -> reassemble
-                const originalData = this.reassembleChunks(chunks);
-                const result = {
-                    __id: id,
-                    data: originalData,
-                    operation: firstChunk.operation
-                };
-                reassembled.push(result);
+                processedRecords.push(result);
             }
         }
 
-        return reassembled;
+        return processedRecords;
     }
 
-    /** Fetches additional chunks if needed for incomplete records */
-    private async fetchMissingChunks(logObjects: any[]): Promise<any[]> {
-        const allChunks: any[] = [...logObjects];
-        const incompleteGroups = new Map<string, { chunks: any[], expectedTotal: number }>();
+    /** Fetches all chunks for a specific record that needs reassembly */
+    private async fetchAllChunksForRecord(id: string, operation: string, expectedTotal: number): Promise<any[]> {
+        try {
+            const result = await this.api.logs.read({
+                deploymentId: CONFIG.railway.provided.deploymentId!,
+                limit: expectedTotal, // Request exactly the number of chunks we need
+                filter: `@__id:"${id}" AND @operation:"${operation}"`,
+            });
 
-        // Group by __id
-        const groups = new Map<string, (Chunk & { operation: string })[]>();
-        for (const obj of logObjects) {
-            const id = obj.__id;
-            if (!id) continue;
-
-            if (!groups.has(id)) groups.set(id, []);
-            groups.get(id)!.push({ ...obj, operation: obj.operation });
+            if (result?.deploymentLogs) return result.deploymentLogs.map(log => this.logToData(log));
+        } catch (error) {
+            this.logger.warn(`Failed to fetch chunks for ID ${id}:`, { error: (error as any).message });
         }
 
-        // Identify incomplete groups
-        for (const [id, chunks] of groups) {
-            const firstChunk = chunks[0];
-            const expectedTotal = firstChunk.total;
-
-            if (typeof expectedTotal === 'number' && expectedTotal > 1 && chunks.length < expectedTotal) {
-                incompleteGroups.set(id, { chunks, expectedTotal });
-            }
-        }
-
-        // Fetch missing chunks
-        for (const [id, { chunks, expectedTotal }] of incompleteGroups) {
-            const firstChunk = chunks[0];
-
-            try {
-                const additionalResult = await this.api.logs.read({
-                    deploymentId: CONFIG.railway.provided.deploymentId!,
-                    limit: expectedTotal * 2,
-                    filter: `@__id:"${id}" AND @operation:"${firstChunk.operation}"`,
-                });
-
-                if (additionalResult?.deploymentLogs) {
-                    const additionalLogs = additionalResult.deploymentLogs.map(log => this.logToData(log));
-
-                    // Add any chunks we don't already have
-                    const existingIndices = new Set(chunks.map(c => c.index));
-                    for (const log of additionalLogs) {
-                        const logObj = log as any;
-                        if (logObj.__id === id && !existingIndices.has(logObj.index)) allChunks.push(logObj);
-                    }
-                }
-            } catch (error) {
-                this.logger.warn(`Failed to fetch additional chunks for ID ${id}:`, { error: (error as any).message });
-            }
-        }
-
-        return allChunks;
+        return [];
     }
 
     /** Searches for logs based on the provided parameters */
@@ -224,16 +193,11 @@ export class RailwayUtil extends Railway {
             filter = filter ? `${filter} AND ${conditionString}` : conditionString;
         }
 
-        // I super don't like doing it this way
-        // BUT when I consider speed vs redundancy, I think this is probably the better solution
-        // The alternative is requesting the limit, and then from there requesting more chunks based on total
-        // Doing it this way however means there is a possibility of fetching all chunks straight from the get-go
-        const requestedLimit = params.limit || 1;
-        const internalLimit = Math.max(requestedLimit * 10, CONFIG.railway.log.maxLogRequestSize);
+        const limit = params.limit || 1;
 
         const result = await this.api.logs.read({
             deploymentId: CONFIG.railway.provided.deploymentId,
-            limit: internalLimit,
+            limit,
             filter,
         });
 
@@ -246,13 +210,10 @@ export class RailwayUtil extends Railway {
         if (!logs || logs.length === 0) return undefined;
 
         // Convert logs to data objects
-        let logObjects = logs.map(log => this.logToData(log)) as any[];
-        logObjects = await this.fetchMissingChunks(logObjects);
+        const logObjects = logs.map(log => this.logToData(log)) as any[];
+        const processedRecords = await this.processLogObjects(logObjects);
 
-        const reassembledRecords = this.groupAndReassembleChunks(logObjects);
-        const limitedResults = reassembledRecords.slice(0, requestedLimit);
-
-        return requestedLimit === 1 ? limitedResults[0] : limitedResults;
+        return limit === 1 ? processedRecords[0] : processedRecords;
     }
 
     async dataFromId(id: string) {
