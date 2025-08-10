@@ -292,7 +292,6 @@ export class RailwayUtil extends Railway {
             limit: 1
         });
 
-        if (result && typeof result === 'object' && 'data' in result) return result.data;
         return result;
     }
 }
