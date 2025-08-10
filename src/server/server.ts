@@ -48,12 +48,20 @@ function transformRes(res: ServerResponse): ResponseTransformed {
 
 async function transformReq(req: IncomingMessage): Promise<RequestTransformed> {
     const query: { [key: string]: any } = {};
-    const urlParts = url.parse(req.url || "", true);
 
-    if (urlParts.query) {
-        Object.keys(urlParts.query).forEach(key => {
-            query[key] = urlParts.query![key];
-        });
+    // Parse query parameters
+    if (req.url) {
+        const urlParts = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+        const searchParams = urlParts.searchParams;
+
+        for (const [key, value] of searchParams.entries()) {
+            if (query[key]) {
+                if (Array.isArray(query[key])) query[key].push(value);
+                else query[key] = [query[key], value];
+            } else {
+                query[key] = value;
+            }
+        }
     }
 
     // Parse request body
