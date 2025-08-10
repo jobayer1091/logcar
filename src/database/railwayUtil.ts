@@ -94,15 +94,15 @@ export class RailwayUtil extends Railway {
 
         const result = await this.api.logs.read({
             deploymentId: CONFIG.railway.provided.deploymentId,
+            limit: params.limit || 1,
             filter,
-            limit: params.limit || 1
         });
 
         console.debug("GQL Read:", { result, filter });
 
-        if (!result.deploymentLogs) {
+        if (!result || !result.deploymentLogs) {
             const message = "Malformed result from Railway";
-            this.logger.error("dataSearch", { params, error: message });
+            this.logger.error("dataSearch", { params, result, error: message });
             throw new Error(message);
         }
 

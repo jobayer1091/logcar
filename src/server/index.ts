@@ -27,8 +27,9 @@ app.get("/read", (req, res) => {
         console.debug("Read operation result:", result);
         res.json(result);
     }).catch((error) => {
+        const message = (error as any).message || "Unknown error";
         console.error("Error occurred during read operation:", error);
-        res.status(500).json({ error: "Internal Server Error" });
+        res.status(500).json({ error: message });
     });
 })
 
