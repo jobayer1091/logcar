@@ -2,7 +2,7 @@ import { LogOperation, operation } from ".";
 import { CONFIG } from "../config";
 import JsonLogger from "../logger";
 import { EnvironmentLogAttributes, Railway, RailwayConfig, EnvironmentLog } from "../clients/railway";
-import { Chunk } from "./chunkUtil";
+import { Chunk, reassembleChunks } from "./chunkUtil";
 
 /** Configuration for search parameters */
 type SearchParameterConfig = {
@@ -83,84 +83,24 @@ export class RailwayUtil extends Railway {
         return conditions;
     }
 
-    /** Reassembles chunks back into original data */
-    private reassembleChunks(chunks: any[]): any {
-        if (chunks.length === 0) return undefined;
-        if (chunks.length === 1) {
-            // Single chunk - return the data part (excluding metadata)
-            const chunk = { ...chunks[0] };
-            delete chunk.__id;
-            delete chunk.__operation;
-            delete chunk.__index;
-            delete chunk.__total;
-            return chunk;
-        }
-
-        // Sort chunks by __index to ensure correct order
-        const sortedChunks = chunks.sort((a, b) => (a.__index || 0) - (b.__index || 0));
-
-        // Extract data from first chunk to determine type
-        const firstChunk = { ...sortedChunks[0] };
-        delete firstChunk.__id;
-        delete firstChunk.__operation;
-        delete firstChunk.__index;
-        delete firstChunk.__total;
-
-        // Handle string: simply join
-        if (typeof firstChunk === 'object' && firstChunk !== null) {
-            // Check if it looks like a string chunk (single property with string value)
-            const keys = Object.keys(firstChunk);
-            if (keys.length === 1 && typeof firstChunk[keys[0]] === 'string') {
-                return sortedChunks.map(chunk => {
-                    const cleanChunk = { ...chunk };
-                    delete cleanChunk.__id;
-                    delete cleanChunk.__operation;
-                    delete cleanChunk.__index;
-                    delete cleanChunk.__total;
-                    return cleanChunk[keys[0]];
-                }).join('');
-            }
-        }
-
-        // Handle array: flatten and combine
-        if (Array.isArray(firstChunk)) {
-            const result: any[] = [];
-            for (const chunk of sortedChunks) {
-                const cleanChunk = { ...chunk };
+    /** Converts log objects to proper Chunk format and reassembles them */
+    private reassembleLogChunks(logChunks: any[]): any {
+        const chunks: Chunk[] = logChunks.map(logObj => ({
+            data: (() => {
+                // this cleanup method makes me sick
+                // in hindsight i shouldn't have stored data along with metadata lol
+                const cleanChunk = { ...logObj };
                 delete cleanChunk.__id;
                 delete cleanChunk.__operation;
                 delete cleanChunk.__index;
                 delete cleanChunk.__total;
-                if (Array.isArray(cleanChunk)) result.push(...cleanChunk);
-            }
-            return result;
-        }
+                return cleanChunk;
+            })(),
+            index: logObj.__index,
+            total: logObj.__total
+        }));
 
-        // Handle object: merge
-        if (typeof firstChunk === 'object' && firstChunk !== null) {
-            const result: Record<string, any> = {};
-            for (const chunk of sortedChunks) {
-                const cleanChunk = { ...chunk };
-                delete cleanChunk.__id;
-                delete cleanChunk.__operation;
-                delete cleanChunk.__index;
-                delete cleanChunk.__total;
-                if (typeof cleanChunk === 'object' && cleanChunk !== null) {
-                    Object.assign(result, cleanChunk);
-                }
-            }
-            return result;
-        }
-
-        // Handle fallback - treat as strings
-        return sortedChunks.map(chunk => {
-            const cleanChunk = { ...chunk };
-            delete cleanChunk.__id;
-            delete cleanChunk.__operation;
-            delete cleanChunk.__index;
-            delete cleanChunk.__total;
-            return String(cleanChunk);
-        }).join('');
+        return reassembleChunks(chunks);
     }
 
     /** Groups chunks by their __id and reassembles them */
@@ -175,7 +115,7 @@ export class RailwayUtil extends Railway {
 
                 if (allChunks.length === logObj.__total) {
                     // We got all chunks, reassemble
-                    const reassembledData = this.reassembleChunks(allChunks);
+                    const reassembledData = this.reassembleLogChunks(allChunks);
                     processedRecords.push({
                         __id: logObj.__id,
                         data: reassembledData,
@@ -184,7 +124,7 @@ export class RailwayUtil extends Railway {
                 } else {
                     // Missing some chunks, log warning but include what we have
                     this.logger.warn(`Incomplete chunked record for ID ${logObj.__id}. Expected ${logObj.__total}, got ${allChunks.length}`);
-                    const partialData = this.reassembleChunks(allChunks);
+                    const partialData = this.reassembleLogChunks(allChunks);
                     processedRecords.push({
                         __id: logObj.__id,
                         data: partialData,

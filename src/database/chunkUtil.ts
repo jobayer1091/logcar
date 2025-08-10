@@ -132,3 +132,45 @@ export function generateChunks<T>(input: T, maxChunkLength: number): Chunk<T>[] 
         return chunks as Chunk<T>[];
     }
 }
+
+/** Reassembles chunks back into their original data structure */
+export function reassembleChunks<T>(chunks: Chunk<T>[]): T {
+    if (chunks.length === 0) throw new Error("Cannot reassemble empty chunks array");
+
+    const sortedChunks = chunks.sort((a, b) => a.index - b.index);
+
+    // Validation, integrity and sequentialism
+    const expectedTotal = sortedChunks[0].total;
+    if (sortedChunks.length !== expectedTotal) throw new Error(`Incomplete chunk set: expected ${expectedTotal}, got ${sortedChunks.length}`);
+
+    for (let i = 0; i < sortedChunks.length; i++) {
+        if (sortedChunks[i].index !== i) throw new Error(`Invalid chunk sequence: expected index ${i}, got ${sortedChunks[i].index}`);
+    }
+
+    if (sortedChunks.length === 1) return sortedChunks[0].data;
+    const firstData = sortedChunks[0].data;
+
+    // Handle strings: concatenate string pieces
+    if (typeof firstData === 'string') return sortedChunks.map(chunk => chunk.data as string).join('') as T;
+
+    // Handle arrays: flatten and combine
+    if (Array.isArray(firstData)) {
+        const result: any[] = [];
+        for (const chunk of sortedChunks) {
+            if (Array.isArray(chunk.data)) result.push(...chunk.data);
+        }
+        return result as T;
+    }
+
+    // Handle objects: merge
+    if (typeof firstData === 'object' && firstData !== null) {
+        const result: Record<string, any> = {};
+        for (const chunk of sortedChunks) {
+            if (typeof chunk.data === 'object' && chunk.data !== null) Object.assign(result, chunk.data);
+        }
+        return result as T;
+    }
+
+    // Fallback: string concatenation
+    return sortedChunks.map(chunk => String(chunk.data)).join('') as T;
+}
