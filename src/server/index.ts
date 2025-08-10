@@ -21,7 +21,7 @@ app.get("/read", (req, res) => {
         return;
     }
 
-    const isRaw = req.query.raw === "true" || req.query.raw === "1";
+    const isRaw = req.query.raw == "true" || req.query.raw == "1";
 
     const logRail = new LogRail({ railwayAuth: authHeader });
 
