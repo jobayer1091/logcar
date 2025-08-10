@@ -1,3 +1,5 @@
+import "dotenv/config";
+
 /** Expect number or string that could be a number */
 export function num(env: string) {
     const value = process.env[env];

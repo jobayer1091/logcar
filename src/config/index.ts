@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { http, num, str } from "./configUtil";
+import JsonLogger from "../logger";
 
 export const CONFIG = {
     server: {
@@ -26,3 +27,6 @@ export const CONFIG = {
         }
     }
 }
+
+const logger = new JsonLogger({ origin: "Config" });
+logger.info("Loaded Config", CONFIG);
