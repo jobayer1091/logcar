@@ -47,11 +47,11 @@ export class RailwayUtil extends Railway {
 
     /** Converts a DeploymentLog to a data object */
     logToData(log: DeploymentLog): object {
-        const idAttr = this.fetchValueFromAttributes(log.attributes, "__id");
+        const idAttr = this.fetchValueFromAttributes(log.attributes, "id");
         const dataAttr = this.fetchValueFromAttributes(log.attributes, "data");
-        const operationAttr = this.fetchValueFromAttributes(log.attributes, "__operation");
-        const indexAttr = this.fetchValueFromAttributes(log.attributes, "__index");
-        const totalAttr = this.fetchValueFromAttributes(log.attributes, "__total");
+        const operationAttr = this.fetchValueFromAttributes(log.attributes, "operation");
+        const indexAttr = this.fetchValueFromAttributes(log.attributes, "index");
+        const totalAttr = this.fetchValueFromAttributes(log.attributes, "total");
 
         const parsedDataAttr = dataAttr ? JSON.parse(dataAttr) : undefined;
         const dataObject = { ...parsedDataAttr };
@@ -69,8 +69,8 @@ export class RailwayUtil extends Railway {
         const conditions: string[] = [];
         const prefix = exclude ? "-" : "";
 
-        if (params.id) conditions.push(`${prefix}@__id:"${params.id}"`);
-        if (params.operation) conditions.push(`${prefix}@__operation:"${params.operation}"`);
+        if (params.id) conditions.push(`${prefix}@id:"${params.id}"`);
+        if (params.operation) conditions.push(`${prefix}@operation:"${params.operation}"`);
 
         if (params.attributes) {
             for (const [key, value] of Object.entries(params.attributes)) {
@@ -172,7 +172,7 @@ export class RailwayUtil extends Railway {
             const result = await this.api.logs.read({
                 deploymentId: CONFIG.railway.provided.deploymentId!,
                 limit: expectedTotal, // Request exactly the number of chunks we need
-                filter: `@__id:"${id}" AND @__operation:"${operation}"`,
+                filter: `@__id:"${id}" AND @operation:"${operation}"`,
             });
 
             if (result?.deploymentLogs) return result.deploymentLogs.map(log => this.logToData(log));
