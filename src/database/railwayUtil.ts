@@ -2,6 +2,7 @@ import { LogOperation, operation } from ".";
 import { CONFIG } from "../config";
 import JsonLogger from "../logger";
 import { DeploymentLogAttributes, Railway, RailwayConfig, DeploymentLog } from "../clients/railway";
+import { Chunk } from "./chunkUtil";
 
 /** Configuration for search parameters */
 type SearchParameterConfig = {
@@ -76,6 +77,136 @@ export class RailwayUtil extends Railway {
         return conditions;
     }
 
+    /** Reassembles chunks back into original data */
+    private reassembleChunks(chunks: Chunk[]): any {
+        if (chunks.length === 0) return undefined;
+        if (chunks.length === 1) return chunks[0].data;
+
+        const sortedChunks = chunks.sort((a, b) => (a.index || 0) - (b.index || 0));
+
+        const firstChunk = sortedChunks[0];
+        const firstData = firstChunk.data;
+
+        // Handle string: simply join
+        if (typeof firstData === 'string') {
+            return sortedChunks.map(chunk => chunk.data).join('');
+        }
+
+        // Handle array: flatten and combine
+        if (Array.isArray(firstData)) {
+            const result: any[] = [];
+            for (const chunk of sortedChunks) {
+                if (Array.isArray(chunk.data)) result.push(...chunk.data);
+            }
+            return result;
+        }
+
+        // Handle object: merge
+        if (typeof firstData === 'object' && firstData !== null) {
+            const result: Record<string, any> = {};
+            for (const chunk of sortedChunks) {
+                if (typeof chunk.data === 'object' && chunk.data !== null) Object.assign(result, chunk.data);
+            }
+            return result;
+        }
+
+        // Handle fallback
+        return sortedChunks.map(chunk => String(chunk.data)).join('');
+    }
+
+    /** Groups chunks by their __id and reassembles them */
+    private groupAndReassembleChunks(logObjects: any[]): any[] {
+        // Group by __id
+        const groups = new Map<string, any[]>();
+        for (const obj of logObjects) {
+            const id = obj.__id;
+            if (!id) continue;
+
+            if (!groups.has(id)) groups.set(id, []);
+            groups.get(id)!.push(obj);
+        }
+
+        // Reassemble each group
+        const reassembled: any[] = [];
+        for (const [id, chunks] of groups) {
+            const firstChunk = chunks[0];
+            const hasChunkInfo = typeof firstChunk.total === 'number' && typeof firstChunk.index === 'number';
+
+            if (!hasChunkInfo || firstChunk.total === 1) {
+                // Single chunk or non-chunked data
+                const result = { ...firstChunk };
+                delete result.index;
+                delete result.total;
+                reassembled.push(result);
+            } else {
+                // Multi-chunk data -> reassemble
+                const originalData = this.reassembleChunks(chunks);
+                const result = {
+                    __id: id,
+                    data: originalData,
+                    operation: firstChunk.operation
+                };
+                reassembled.push(result);
+            }
+        }
+
+        return reassembled;
+    }
+
+    /** Fetches additional chunks if needed for incomplete records */
+    private async fetchMissingChunks(logObjects: any[]): Promise<any[]> {
+        const allChunks: any[] = [...logObjects];
+        const incompleteGroups = new Map<string, { chunks: any[], expectedTotal: number }>();
+
+        // Group by __id
+        const groups = new Map<string, (Chunk & { operation: string })[]>();
+        for (const obj of logObjects) {
+            const id = obj.__id;
+            if (!id) continue;
+
+            if (!groups.has(id)) groups.set(id, []);
+            groups.get(id)!.push({ ...obj, operation: obj.operation });
+        }
+
+        // Identify incomplete groups
+        for (const [id, chunks] of groups) {
+            const firstChunk = chunks[0];
+            const expectedTotal = firstChunk.total;
+
+            if (typeof expectedTotal === 'number' && expectedTotal > 1 && chunks.length < expectedTotal) {
+                incompleteGroups.set(id, { chunks, expectedTotal });
+            }
+        }
+
+        // Fetch missing chunks
+        for (const [id, { chunks, expectedTotal }] of incompleteGroups) {
+            const firstChunk = chunks[0];
+
+            try {
+                const additionalResult = await this.api.logs.read({
+                    deploymentId: CONFIG.railway.provided.deploymentId!,
+                    limit: expectedTotal * 2,
+                    filter: `@__id:"${id}" AND @operation:"${firstChunk.operation}"`,
+                });
+
+                if (additionalResult?.deploymentLogs) {
+                    const additionalLogs = additionalResult.deploymentLogs.map(log => this.logToData(log));
+
+                    // Add any chunks we don't already have
+                    const existingIndices = new Set(chunks.map(c => c.index));
+                    for (const log of additionalLogs) {
+                        const logObj = log as any;
+                        if (logObj.__id === id && !existingIndices.has(logObj.index)) allChunks.push(logObj);
+                    }
+                }
+            } catch (error) {
+                this.logger.warn(`Failed to fetch additional chunks for ID ${id}:`, { error: (error as any).message });
+            }
+        }
+
+        return allChunks;
+    }
+
     /** Searches for logs based on the provided parameters */
     async dataSearch(params: SearchParameters) {
         if (!CONFIG.railway.provided.deploymentId) throw new Error("Missing deploymentId");
@@ -93,13 +224,18 @@ export class RailwayUtil extends Railway {
             filter = filter ? `${filter} AND ${conditionString}` : conditionString;
         }
 
+        // I super don't like doing it this way
+        // BUT when I consider speed vs redundancy, I think this is probably the better solution
+        // The alternative is requesting the limit, and then from there requesting more chunks based on total
+        // Doing it this way however means there is a possibility of fetching all chunks straight from the get-go
+        const requestedLimit = params.limit || 1;
+        const internalLimit = Math.max(requestedLimit * 10, CONFIG.railway.log.maxLogRequestSize);
+
         const result = await this.api.logs.read({
             deploymentId: CONFIG.railway.provided.deploymentId,
-            limit: params.limit || 1,
+            limit: internalLimit,
             filter,
         });
-
-        console.debug("GQL Read:", { result, filter });
 
         if (!result || !result.deploymentLogs) {
             const message = !result ? "No result returned from read API query" : "No deployment logs attached to read API query result";
@@ -110,16 +246,24 @@ export class RailwayUtil extends Railway {
         if (!logs || logs.length === 0) return undefined;
 
         // Convert logs to data objects
-        const results = logs.map(log => this.logToData(log));
-        return params.limit === 1 ? results[0] : results;
+        let logObjects = logs.map(log => this.logToData(log)) as any[];
+        logObjects = await this.fetchMissingChunks(logObjects);
+
+        const reassembledRecords = this.groupAndReassembleChunks(logObjects);
+        const limitedResults = reassembledRecords.slice(0, requestedLimit);
+
+        return requestedLimit === 1 ? limitedResults[0] : limitedResults;
     }
 
     async dataFromId(id: string) {
-        return this.dataSearch({
+        const result = await this.dataSearch({
             id,
             exclude: { operation: "read" },
             limit: 1
         });
+
+        if (result && typeof result === 'object' && 'data' in result) return result.data;
+        return result;
     }
 }
 

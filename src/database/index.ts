@@ -2,6 +2,7 @@ import JsonLogger from "../logger";
 import { randomUUID } from "crypto";
 import { CONFIG } from "../config";
 import RailwayUtil from "./railwayUtil";
+import { generateChunks } from "./chunkUtil";
 
 export const operation = {
     create: "create",
@@ -29,9 +30,14 @@ export class LogRail {
     }
 
     create<T = object>(data: T): { data: T; __id: string } {
-        const collection = { data, __id: randomUUID() };
-        this.logger.info(operation.create, { ...collection, operation: operation.create });
-        return collection;
+        const chunks = generateChunks(data, CONFIG.railway.log.maxChunkLength);
+
+        const __id = randomUUID();
+        for (const chunk of chunks) {
+            this.logger.info(operation.create, { ...chunk, __id, operation: operation.create });
+        }
+
+        return { data, __id };
     }
 
     async read(id: string) {
@@ -55,9 +61,12 @@ export class LogRail {
     update<T = object>(data: T & { __id: string }): T & { __id: string };
     update<T = object>(id: string, data: T): { __id: string; data: T };
     update<T = object>(idOrData: string | T, data?: T) {
-        const collection = { __id: idOrData, data };
-        this.logger.info(operation.update, { ...collection, operation: operation.update });
-        return collection;
+        const chunks = generateChunks(data, CONFIG.railway.log.maxChunkLength);
+        for (const chunk of chunks) {
+            this.logger.info(operation.update, { ...chunk, __id: idOrData, operation: operation.update });
+        }
+
+        return { __id: idOrData, data };
     }
 
     delete(id: string) {
