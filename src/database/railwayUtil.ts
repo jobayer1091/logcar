@@ -69,7 +69,7 @@ export class RailwayUtil extends Railway {
         const conditions: string[] = [];
         const prefix = exclude ? "-" : "";
 
-        if (params.id) conditions.push(`${prefix}@id:"${params.id}"`);
+        if (params.id) conditions.push(`${prefix}@__id:"${params.id}"`);
         if (params.operation) conditions.push(`${prefix}@operation:"${params.operation}"`);
 
         if (params.attributes) {
