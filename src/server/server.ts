@@ -51,10 +51,19 @@ async function transformReq(req: IncomingMessage): Promise<RequestTransformed> {
 
     // Parse query parameters
     if (req.url) {
-        const urlParts = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+        // Decode HTML entities in the URL
+        const decodedUrl = req.url
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'")
+
+        const urlParts = new URL(decodedUrl, `http://${req.headers.host || 'localhost'}`);
         const searchParams = urlParts.searchParams;
 
-        console.log('URL:', req.url);
+        console.log('URL (original):', req.url);
+        console.log('URL (decoded):', decodedUrl);
         console.log('SearchParams:', Array.from(searchParams.entries()));
 
         for (const [key, value] of searchParams.entries()) {
