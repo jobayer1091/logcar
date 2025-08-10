@@ -167,7 +167,7 @@ export class RailwayUtil extends Railway {
     /** Fetches all chunks for a specific record that needs reassembly */
     private async fetchAllChunksForRecord(id: string, operation: string, limit: number): Promise<any[]> {
         try {
-            const filter = `@__id:"${id}"` // AND @operation:"${operation}";
+            const filter = `@__id:"${id}" AND @operation:"${operation}"`;
 
             const result = await this.api.logs.read({
                 deploymentId: CONFIG.railway.provided.deploymentId!,
