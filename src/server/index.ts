@@ -76,7 +76,7 @@ app.get("/download/:id", async (req, res) => {
     const logRail = new LogRail({ railwayAuth });
 
     logRail.read(req.params.id).then(async (result) => {
-        const packedFileData = result as PackedFileData;
+        const packedFileData = result.data as PackedFileData;
         const fileData = await decompressFileData(packedFileData);
 
         const buffer = Buffer.from(fileData.data, "base64");
