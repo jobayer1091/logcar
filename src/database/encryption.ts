@@ -55,10 +55,7 @@ export class DataEncryption {
 
     /** Decrypts data using either global key or provided key (password or pre-made key) */
     decrypt<T = any>(encryptedData: string, customKey?: string): T {
-        if (typeof encryptedData !== 'string') {
-            console.error("Decryption error: Expected string for encrypted data, got", encryptedData);
-            throw new Error(`Expected string for decryption, got ${typeof encryptedData}`);
-        }
+        if (typeof encryptedData !== 'string') throw new Error(`Expected string for decryption, got ${typeof encryptedData}`);
 
         if (!encryptedData.includes(':') || (!this.config.enabled && !customKey)) return JSON.parse(encryptedData);
 

@@ -70,15 +70,19 @@ export class LogRail {
             throw new Error("No Railway deployment ID provided");
         }
 
-        this.logger.info(operation.read, { __id: id, operation: operation.read });
-
         try {
             const rawPackage = await this.railUtil.dataFromId(id);
             if (!rawPackage) return rawPackage;
 
-            const shouldDecrypt = "encrypted" in rawPackage || typeof config.encryptionToken === "string";
-            const data = shouldDecrypt ? this.encryption.decrypt<T>(rawPackage.data, config.encryptionToken) : rawPackage.data;
+            const isEncrypted = "encrypted" in rawPackage;
+            if (isEncrypted && !config.encryptionToken && !CONFIG.database.encryption.key) {
+                this.logger.error(operation.read, { __id: id, error: "No encryption key provided" });
+                throw new Error("Attempt to read encrypted data without a decryption key");
+            }
 
+            const data = isEncrypted ? this.encryption.decrypt<T>(rawPackage.data, config.encryptionToken) : rawPackage.data;
+
+            this.logger.info(operation.read, { __id: id, operation: operation.read });
             return { ...rawPackage, data };
         } catch (error) {
             const message = (error as any).message || "Unknown error";
