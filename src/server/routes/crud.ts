@@ -18,7 +18,8 @@ async function handleFileUploads(files: FileUpload[], { railwayAuth, encryptionT
 
         return uploadedIds;
     } catch (error) {
-        throw new Error("File upload failed");
+        console.error("File upload processing failed:", error);
+        throw new Error(`File upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }
 

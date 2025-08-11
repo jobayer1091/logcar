@@ -16,6 +16,16 @@ async function compressString(data: zlib.InputType): Promise<string> {
     }
 }
 
+async function compressBinary(data: Buffer): Promise<string> {
+    try {
+        const gzippedBuffer = await gzipAsync(data);
+        return gzippedBuffer.toString("base64");
+    } catch (error) {
+        console.error("Error compressing binary data:", error);
+        throw error;
+    }
+}
+
 async function decompressString(data: string): Promise<string> {
     try {
         const buffer = Buffer.from(data, "base64");
@@ -23,6 +33,17 @@ async function decompressString(data: string): Promise<string> {
         return gunzippedBuffer.toString("utf-8");
     } catch (error) {
         console.error("Error decompressing string:", error);
+        throw error;
+    }
+}
+
+async function decompressToBase64(data: string): Promise<string> {
+    try {
+        const buffer = Buffer.from(data, "base64");
+        const gunzippedBuffer = await gunzipAsync(buffer);
+        return gunzippedBuffer.toString("base64");
+    } catch (error) {
+        console.error("Error decompressing to base64:", error);
         throw error;
     }
 }
@@ -38,12 +59,24 @@ export type PackedFileData = {
     isFile: true;
 }
 
+/** Check if a content type represents binary data */
+export function isBinaryContentType(contentType: string): boolean {
+    const textTypes = [
+        'text/',
+        'application/json',
+        'application/xml',
+        'application/javascript',
+        'application/x-www-form-urlencoded'
+    ];
+    
+    return !textTypes.some(type => contentType.toLowerCase().startsWith(type));
+}
+
 /** Packs an uploaded file with additional metadata and compresses the data */
 export async function packUploadedFileData(file: FileUpload): Promise<PackedFileData> {
     const hashHex = crypto.createHash("sha256").update(file.data).digest("hex");
 
-    const base64 = file.data.toString("base64");
-    const compressedBase64 = await compressString(base64);
+    const compressedBase64 = await compressBinary(file.data);
 
     const originalSize = file.data.length;
     const compressedBuffer = Buffer.from(compressedBase64, "base64");
@@ -67,6 +100,6 @@ export async function packUploadedFileData(file: FileUpload): Promise<PackedFile
 
 /** Decompress the data within a packaged filedata  */
 export async function decompressFileData(file: PackedFileData): Promise<PackedFileData> {
-    const decompressedData = await decompressString(file.data);
+    const decompressedData = await decompressToBase64(file.data);
     return { ...file, data: decompressedData };
 }
