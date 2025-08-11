@@ -48,10 +48,6 @@ app.post("/create", async (req, res) => {
     if (!railwayAuth) return res.status(400).json({ error: "Bad Request: No Railway API key provided" });
 
     const encryptionToken = req.query.encryptionToken;
-
-    const { files } = req;
-    if (!files || files.length === 0) return res.status(400).json({ error: "Bad Request: No files uploaded" });
-
     const allIds: string[] = [];
 
     if (req.body && Object.keys(req.body).length > 0) {
@@ -60,9 +56,9 @@ app.post("/create", async (req, res) => {
         allIds.push(result.__id);
     }
 
-    if (files) {
+    if (req.files) {
         try {
-            const uploadedIds = await handleFileUploads(files, { railwayAuth, encryptionToken });
+            const uploadedIds = await handleFileUploads(req.files, { railwayAuth, encryptionToken });
             allIds.push(...uploadedIds);
         } catch (error) {
             console.error("Error occurred during upload operation:", error);
