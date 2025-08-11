@@ -433,11 +433,18 @@ export function reconstructFromLogChunks(logChunks: Array<{ data: any, chunkId: 
                 return getLastChunkIndex(a.chunkId) - getLastChunkIndex(b.chunkId);
             });
 
-            // Reassemble based on data
+            // Reassemble based on data type
             const firstData = sortedChunks[0].data;
             if (typeof firstData === 'string') {
-                // String chunks: concatenate
-                reassembledContent.set(contentPath, sortedChunks.map(c => c.data as string).join(''));
+                const stringParts = sortedChunks.map(c => {
+                    if (typeof c.data === 'string') {
+                        return c.data;
+                    } else {
+                        console.warn(`Expected string chunk but got ${typeof c.data}:`, c.data);
+                        return JSON.stringify(c.data);
+                    }
+                });
+                reassembledContent.set(contentPath, stringParts.join(''));
             } else if (Array.isArray(firstData)) {
                 // Array chunks: flatten
                 const reassembledArray: any[] = [];

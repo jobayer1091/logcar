@@ -54,6 +54,7 @@ export class RailwayUtil extends Railway {
         const operationAttr = fromAttr("operation");
         const indexAttr = fromAttr("index");
         const totalAttr = fromAttr("total");
+        const chunkIdAttr = fromAttr("chunkId");
 
         const parsedDataAttr = dataAttr ? JSON.parse(dataAttr) : undefined;
 
@@ -64,6 +65,7 @@ export class RailwayUtil extends Railway {
         if (operationAttr) logObject.__operation = JSON.parse(operationAttr);
         if (indexAttr) logObject.__index = JSON.parse(indexAttr);
         if (totalAttr) logObject.__total = JSON.parse(totalAttr);
+        if (chunkIdAttr) logObject.chunkId = JSON.parse(chunkIdAttr);
         if (parsedDataAttr !== undefined) logObject.data = parsedDataAttr;
 
         return logObject;
