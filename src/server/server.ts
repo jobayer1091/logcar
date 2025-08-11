@@ -23,9 +23,18 @@ type ResponseTransformed = ServerResponse & {
     send: (body: any) => void;
 }
 
+type FileUpload = {
+    fieldName: string;
+    filename: string;
+    contentType: string;
+    data: Buffer;
+    size: number;
+};
+
 type RequestTransformed = IncomingMessage & {
     query: { [key: string]: any };
     body: { [key: string]: any };
+    files: FileUpload[];
 };
 
 function transformRes(res: ServerResponse): ResponseTransformed {
@@ -44,6 +53,73 @@ function transformRes(res: ServerResponse): ResponseTransformed {
         }
     });
     return response;
+}
+
+/** Helper function to parse multipart/form-data */
+function parseMultipart(buffer: Buffer, boundary: string): { fields: { [key: string]: any }, files: FileUpload[] } {
+    const fields: { [key: string]: any } = {};
+    const files: FileUpload[] = [];
+
+    const boundaryBuffer = Buffer.from(`--${boundary}`);
+    const parts: Buffer[] = [];
+
+    let start = 0;
+    let pos = buffer.indexOf(boundaryBuffer, start);
+
+    while (pos !== -1) {
+        if (start !== pos) parts.push(buffer.subarray(start, pos));
+        start = pos + boundaryBuffer.length;
+        pos = buffer.indexOf(boundaryBuffer, start);
+    }
+
+    // Process each part
+    for (const part of parts) {
+        if (part.length === 0) continue;
+
+        const headerEndIndex = part.indexOf('\r\n\r\n');
+        if (headerEndIndex === -1) continue;
+
+        const headerSection = part.subarray(0, headerEndIndex).toString();
+        const bodySection = part.subarray(headerEndIndex + 4);
+
+        const headers: { [key: string]: string } = {};
+        const headerLines = headerSection.split('\r\n');
+
+        for (const line of headerLines) {
+            const colonIndex = line.indexOf(':');
+            if (colonIndex !== -1) {
+                const key = line.slice(0, colonIndex).trim().toLowerCase();
+                const value = line.slice(colonIndex + 1).trim();
+                headers[key] = value;
+            }
+        }
+
+        const contentDisposition = headers['content-disposition'];
+        if (!contentDisposition) continue;
+
+        const nameMatch = contentDisposition.match(/name="([^"]+)"/);
+        const filenameMatch = contentDisposition.match(/filename="([^"]+)"/);
+        if (!nameMatch) continue;
+
+        // Upload Properties
+        const fieldName = nameMatch[1];
+        const filename = filenameMatch ? filenameMatch[1] : null;
+        const contentType = headers['content-type'] || 'text/plain';
+
+        if (filename) {
+            files.push({
+                fieldName,
+                filename,
+                contentType,
+                data: bodySection,
+                size: bodySection.length
+            });
+        } else {
+            fields[fieldName] = bodySection.toString();
+        }
+    }
+
+    return { fields, files };
 }
 
 async function transformReq(req: IncomingMessage): Promise<RequestTransformed> {
@@ -73,6 +149,7 @@ async function transformReq(req: IncomingMessage): Promise<RequestTransformed> {
 
     // Parse request body
     let body: { [key: string]: any } = {};
+    let files: FileUpload[] = [];
 
     if (req.method && ['POST', 'PUT', 'PATCH'].includes(req.method.toUpperCase())) {
         const chunks: Buffer[] = [];
@@ -81,32 +158,47 @@ async function transformReq(req: IncomingMessage): Promise<RequestTransformed> {
             chunks.push(chunk);
         }
 
-        const rawBody = Buffer.concat(chunks).toString();
-        if (rawBody) {
-            const contentType = req.headers['content-type'] || '';
+        const rawBuffer = Buffer.concat(chunks);
+        const contentType = req.headers['content-type'] || '';
 
-            try {
-                if (contentType.includes('application/json')) {
-                    // JSON
+        try {
+            if (contentType.includes('multipart/form-data')) {
+                // Extract boundary from content-type header
+                const boundaryMatch = contentType.match(/boundary=([^;]+)/);
+                if (boundaryMatch) {
+                    const boundary = boundaryMatch[1].replace(/"/g, '');
+                    const parsed = parseMultipart(rawBuffer, boundary);
+                    body = parsed.fields;
+                    files = parsed.files;
+                }
+            } else if (contentType.includes('application/json')) {
+                // JSON
+                const rawBody = rawBuffer.toString();
+                if (rawBody) {
                     body = JSON.parse(rawBody);
-                } else if (contentType.includes('application/x-www-form-urlencoded')) {
-                    // URL-encoded
+                }
+            } else if (contentType.includes('application/x-www-form-urlencoded')) {
+                // URL-encoded
+                const rawBody = rawBuffer.toString();
+                if (rawBody) {
                     const params = new URLSearchParams(rawBody);
                     for (const [key, value] of params) {
                         body[key] = value;
                     }
-                } else {
-                    // RAW
-                    body = { _raw: rawBody };
                 }
-            } catch (error) {
+            } else {
                 // RAW
-                body = { _raw: rawBody };
+                const rawBody = rawBuffer.toString();
+                body = { _raw: rawBody, _rawBuffer: rawBuffer };
             }
+        } catch (error) {
+            // RAW fallback
+            const rawBody = rawBuffer.toString();
+            body = { _raw: rawBody, _rawBuffer: rawBuffer };
         }
     }
 
-    return Object.assign(req, { query, body });
+    return Object.assign(req, { query, body, files });
 }
 
 export class Server {
