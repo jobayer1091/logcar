@@ -1,10 +1,11 @@
 export type Chunk<T = any> = {
-    data: T,
+    data: T | Chunk<T>[],
     index: number,
     total: number,
+    isNested?: boolean,
 }
 
-// Helper function to measure the string length of any value
+/** Helper function to measure the string length of any value */
 function getStringLength(value: any): number {
     if (typeof value === 'string') {
         return value.length;
@@ -28,6 +29,18 @@ function splitArray(arr: any[], maxLength: number): any[][] {
 
     for (const item of arr) {
         const itemLength = getStringLength(item);
+
+        // If entry exceeds maximum length itself, recursively chunk
+        if (itemLength > maxLength) {
+            if (currentChunk.length > 0) {
+                chunks.push(currentChunk);
+                currentChunk = [];
+                currentLength = 0;
+            }
+
+            chunks.push([{ __RECURSIVE_CHUNK__: item }]);
+            continue;
+        }
 
         if (currentLength + itemLength > maxLength && currentChunk.length > 0) {
             // Exceeding limit, new chunk
@@ -56,7 +69,21 @@ function splitObject(obj: Record<string, any>, maxLength: number): Record<string
     let currentLength = 0;
 
     for (const [key, value] of Object.entries(obj)) {
-        const entryLength = getStringLength(key) + getStringLength(value);
+        const keyLength = getStringLength(key);
+        const valueLength = getStringLength(value);
+        const entryLength = keyLength + valueLength;
+
+        // If entry exceeds maximum length itself, recursively chunk
+        if (valueLength > maxLength) {
+            if (Object.keys(currentChunk).length > 0) {
+                chunks.push(currentChunk);
+                currentChunk = {};
+                currentLength = 0;
+            }
+
+            chunks.push({ [key]: { __RECURSIVE_CHUNK__: value } });
+            continue;
+        }
 
         if (currentLength + entryLength > maxLength && Object.keys(currentChunk).length > 0) {
             // Exceeding limit, new chunk
@@ -93,21 +120,51 @@ export function generateChunks<T>(input: T, maxChunkLength: number): Chunk<T>[] 
     // Handle arrays
     if (Array.isArray(input)) {
         const splitArrays = splitArray(input, maxChunkLength);
-        return splitArrays.map((chunk, index) => ({
-            data: chunk as T,
-            index,
-            total: splitArrays.length
-        }));
+        return splitArrays.map((chunk, index) => {
+            const processedChunk = chunk.map(item => {
+                if (item && typeof item === 'object' && '__RECURSIVE_CHUNK__' in item) {
+                    return generateChunks(item.__RECURSIVE_CHUNK__, maxChunkLength);
+                }
+                return item;
+            });
+
+            const hasRecursiveChunks = processedChunk.some(item =>
+                Array.isArray(item) && item.length > 0 && item[0] && typeof item[0] === 'object' && 'index' in item[0]
+            );
+
+            return {
+                data: processedChunk as T,
+                index,
+                total: splitArrays.length,
+                isNested: hasRecursiveChunks
+            };
+        });
     }
 
     // Handle objects
     if (typeof input === 'object' && input !== null) {
         const splitObjects = splitObject(input as Record<string, any>, maxChunkLength);
-        return splitObjects.map((chunk, index) => ({
-            data: chunk as T,
-            index,
-            total: splitObjects.length
-        }));
+        return splitObjects.map((chunk, index) => {
+            const processedChunk: Record<string, any> = {};
+            for (const [key, value] of Object.entries(chunk)) {
+                if (value && typeof value === 'object' && '__RECURSIVE_CHUNK__' in value) {
+                    processedChunk[key] = generateChunks(value.__RECURSIVE_CHUNK__, maxChunkLength);
+                } else {
+                    processedChunk[key] = value;
+                }
+            }
+
+            const hasRecursiveChunks = Object.values(processedChunk).some(value =>
+                Array.isArray(value) && value.length > 0 && value[0] && typeof value[0] === 'object' && 'index' in value[0]
+            );
+
+            return {
+                data: processedChunk as T,
+                index,
+                total: splitObjects.length,
+                isNested: hasRecursiveChunks
+            };
+        });
     }
 
     // Fallback for other types
@@ -147,17 +204,31 @@ export function reassembleChunks<T>(chunks: Chunk<T>[]): T {
         if (sortedChunks[i].index !== i) throw new Error(`Invalid chunk sequence: expected index ${i}, got ${sortedChunks[i].index}`);
     }
 
-    if (sortedChunks.length === 1) return sortedChunks[0].data;
+    if (sortedChunks.length === 1) {
+        const singleChunk = sortedChunks[0];
+        if (singleChunk.isNested) return reassembleNestedData(singleChunk.data);
+        return singleChunk.data as T;
+    }
+
     const firstData = sortedChunks[0].data;
 
     // Handle strings: concatenate string pieces
-    if (typeof firstData === 'string') return sortedChunks.map(chunk => chunk.data as string).join('') as T;
+    if (typeof firstData === 'string') {
+        return sortedChunks
+            .map(chunk => chunk.isNested ? reassembleNestedData(chunk.data) : chunk.data)
+            .map(data => String(data))
+            .join('') as T;
+    }
 
     // Handle arrays: flatten and combine
     if (Array.isArray(firstData)) {
         const result: any[] = [];
         for (const chunk of sortedChunks) {
-            if (Array.isArray(chunk.data)) result.push(...chunk.data);
+            let processedData;
+            if (chunk.isNested) processedData = reassembleNestedData(chunk.data);
+            else processedData = chunk.data;
+
+            if (Array.isArray(processedData)) result.push(...processedData);
         }
         return result as T;
     }
@@ -166,11 +237,46 @@ export function reassembleChunks<T>(chunks: Chunk<T>[]): T {
     if (typeof firstData === 'object' && firstData !== null) {
         const result: Record<string, any> = {};
         for (const chunk of sortedChunks) {
-            if (typeof chunk.data === 'object' && chunk.data !== null) Object.assign(result, chunk.data);
+            let processedData;
+            if (chunk.isNested) processedData = reassembleNestedData(chunk.data);
+            else processedData = chunk.data;
+
+            if (typeof processedData === 'object' && processedData !== null) Object.assign(result, processedData);
         }
         return result as T;
     }
 
     // Fallback: string concatenation
-    return sortedChunks.map(chunk => String(chunk.data)).join('') as T;
+    return sortedChunks
+        .map(chunk => {
+            const processedData = chunk.isNested ? reassembleNestedData(chunk.data) : chunk.data;
+            return String(processedData);
+        })
+        .join('') as T;
+}
+
+/** Helper function to reassemble nested chunk data */
+function reassembleNestedData(data: any): any {
+    if (Array.isArray(data)) {
+        return data.map(item => {
+            if (Array.isArray(item) && item.length > 0 && item[0] && typeof item[0] === 'object' && 'index' in item[0] && 'total' in item[0]) {
+                return reassembleChunks(item as Chunk<any>[]);
+            }
+            return item;
+        });
+    }
+
+    if (typeof data === 'object' && data !== null) {
+        const result: Record<string, any> = {};
+        for (const [key, value] of Object.entries(data)) {
+            if (Array.isArray(value) && value.length > 0 && value[0] && typeof value[0] === 'object' && 'index' in value[0] && 'total' in value[0]) {
+                result[key] = reassembleChunks(value as Chunk<any>[]);
+            } else {
+                result[key] = value;
+            }
+        }
+        return result;
+    }
+
+    return data;
 }
