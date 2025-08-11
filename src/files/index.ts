@@ -46,7 +46,8 @@ export async function packUploadedFileData(file: FileUpload): Promise<PackedFile
     const compressedBase64 = await compressString(base64);
 
     const originalSize = file.data.length;
-    const compressedSize = Buffer.byteLength(compressedBase64, "utf8");
+    const compressedBuffer = Buffer.from(compressedBase64, "base64");
+    const compressedSize = compressedBuffer.length;
 
     const uploadDate = new Date().toISOString();
     const contentType = file.contentType;
