@@ -2,7 +2,7 @@ import JsonLogger from "../logger";
 import { randomUUID } from "crypto";
 import { CONFIG } from "../config";
 import RailwayUtil from "./railwayUtil";
-import { generateChunks } from "./chunkUtil";
+import { extractLogChunks } from "./chunkUtil";
 
 export const operation = {
     create: "create",
@@ -30,11 +30,19 @@ export class LogRail {
     }
 
     create<T = object>(data: T): { data: T; __id: string } {
-        const chunks = generateChunks(data, CONFIG.railway.log.maxChunkLength);
+        // Use the new flattening approach for individual logging
+        const logChunks = extractLogChunks(data, CONFIG.railway.log.maxChunkLength);
 
         const __id = randomUUID();
-        for (const chunk of chunks) {
-            this.logger.info(operation.create, { ...chunk, __id, operation: operation.create });
+        for (const chunk of logChunks) {
+            this.logger.info(operation.create, {
+                data: chunk.data,
+                chunkId: chunk.chunkId,
+                index: chunk.index,
+                total: chunk.total,
+                __id,
+                operation: operation.create
+            });
         }
 
         return { data, __id };
@@ -60,13 +68,35 @@ export class LogRail {
 
     update<T = object>(data: T & { __id: string }): T & { __id: string };
     update<T = object>(id: string, data: T): { __id: string; data: T };
-    update<T = object>(idOrData: string | T, data?: T) {
-        const chunks = generateChunks(data, CONFIG.railway.log.maxChunkLength);
-        for (const chunk of chunks) {
-            this.logger.info(operation.update, { ...chunk, __id: idOrData, operation: operation.update });
+    update<T = object>(idOrData: string | (T & { __id: string }), data?: T) {
+        let actualId: string;
+        let actualData: T;
+
+        if (typeof idOrData === 'string') {
+            // Called as update(id, data)
+            actualId = idOrData;
+            actualData = data!;
+        } else {
+            // Called as update(data) where data has __id
+            actualId = idOrData.__id;
+            const { __id, ...restData } = idOrData;
+            actualData = restData as T;
         }
 
-        return { __id: idOrData, data };
+        const logChunks = extractLogChunks(actualData, CONFIG.railway.log.maxChunkLength);
+
+        for (const chunk of logChunks) {
+            this.logger.info(operation.update, {
+                data: chunk.data,
+                chunkId: chunk.chunkId,
+                index: chunk.index,
+                total: chunk.total,
+                __id: actualId,
+                operation: operation.update
+            });
+        }
+
+        return typeof idOrData === 'string' ? { __id: actualId, data: actualData } : idOrData;
     }
 
     delete(id: string) {

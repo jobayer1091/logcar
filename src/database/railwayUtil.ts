@@ -2,7 +2,7 @@ import { LogOperation, operation } from ".";
 import { CONFIG } from "../config";
 import JsonLogger from "../logger";
 import { EnvironmentLogAttributes, Railway, RailwayConfig, EnvironmentLog } from "../clients/railway";
-import { Chunk, reassembleChunks } from "./chunkUtil";
+import { Chunk, reassembleChunks, reconstructFromLogChunks } from "./chunkUtil";
 
 /** Configuration for search parameters */
 type SearchParameterConfig = {
@@ -97,6 +97,23 @@ export class RailwayUtil extends Railway {
         return reassembleChunks(chunks);
     }
 
+    /** Handles both old and new chunk formats for reconstruction */
+    private reconstructData(logChunks: any[]): any {
+        const hasChunkId = logChunks.some(chunk => chunk.chunkId !== undefined);
+        
+        if (hasChunkId) {
+            const chunks = logChunks.map(logObj => ({
+                data: logObj.data,
+                chunkId: logObj.chunkId,
+                index: logObj.index,
+                total: logObj.total
+            }));
+            return reconstructFromLogChunks(chunks);
+        } else {
+            return this.reassembleLogChunks(logChunks);
+        }
+    }
+
     /** Groups chunks by their __id and reassembles them */
     private async processLogObjects(logObjects: any[]): Promise<any[]> {
         const processedRecords: any[] = [];
@@ -109,7 +126,7 @@ export class RailwayUtil extends Railway {
 
                 if (allChunks.length === logObj.__total) {
                     // We got all chunks, reassemble
-                    const reassembledData = this.reassembleLogChunks(allChunks);
+                    const reassembledData = this.reconstructData(allChunks);
                     processedRecords.push({
                         __id: logObj.__id,
                         data: reassembledData,
@@ -118,7 +135,7 @@ export class RailwayUtil extends Railway {
                 } else {
                     // Missing some chunks, log warning but include what we have
                     this.logger.warn(`Incomplete chunked record for ID ${logObj.__id}. Expected ${logObj.__total}, got ${allChunks.length}`);
-                    const partialData = this.reassembleLogChunks(allChunks);
+                    const partialData = this.reconstructData(allChunks);
                     processedRecords.push({
                         __id: logObj.__id,
                         data: partialData,

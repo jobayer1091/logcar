@@ -5,8 +5,17 @@ export type Chunk<T = any> = {
     isNested?: boolean,
 }
 
+export type FlatChunk<T = any> = {
+    data: T,
+    index: number,
+    total: number,
+    chunkId: string,
+    parentId?: string,
+    position: string, // JSON path to where this chunk belongs
+}
+
 /** Helper function to measure the string length of any value */
-function getStringLength(value: any): number {
+export function getStringLength(value: any): number {
     if (typeof value === 'string') {
         return value.length;
     }
@@ -279,4 +288,239 @@ function reassembleNestedData(data: any): any {
     }
 
     return data;
+}
+
+/** Flattens nested chunks into a flat array for individual logging */
+export function flattenChunks<T>(chunks: Chunk<T>[]): FlatChunk<any>[] {
+    const flatChunks: FlatChunk<any>[] = [];
+    let globalIndex = 0;
+
+    function extractLeafData(data: any, parentId: string): void {
+        if (Array.isArray(data) && data.length > 0 && data[0] && typeof data[0] === 'object' && 'index' in data[0] && 'data' in data[0]) {
+            for (const chunk of data as Chunk<any>[]) {
+                const chunkId = `${parentId}.c${chunk.index}`;
+                if (chunk.isNested) {
+                    extractLeafData(chunk.data, chunkId);
+                } else {
+                    flatChunks.push({
+                        data: chunk.data,
+                        index: globalIndex++,
+                        total: 0, // updated later
+                        chunkId: chunkId,
+                        parentId: parentId,
+                        position: `${parentId}[${chunk.index}]`
+                    });
+                }
+            }
+        } else if (typeof data === 'object' && data !== null) {
+            for (const [key, value] of Object.entries(data)) {
+                if (Array.isArray(value) && value.length > 0 && value[0] && typeof value[0] === 'object' && 'index' in value[0] && 'data' in value[0]) {
+                    extractLeafData(value, `${parentId}.${key}`);
+                } else {
+                    flatChunks.push({
+                        data: { [key]: value },
+                        index: globalIndex++,
+                        total: 0,
+                        chunkId: `${parentId}.${key}`,
+                        parentId: parentId,
+                        position: `${parentId}.${key}`
+                    });
+                }
+            }
+        } else {
+            flatChunks.push({
+                data: data,
+                index: globalIndex++,
+                total: 0,
+                chunkId: parentId,
+                position: parentId
+            });
+        }
+    }
+
+    // Process root chunks
+    for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        const rootId = `root${i}`;
+
+        if (chunk.isNested) {
+            extractLeafData(chunk.data, rootId);
+        } else {
+            flatChunks.push({
+                data: chunk.data,
+                index: globalIndex++,
+                total: 0,
+                chunkId: rootId,
+                position: rootId
+            });
+        }
+    }
+
+    // Update indices and totals
+    for (let i = 0; i < flatChunks.length; i++) {
+        flatChunks[i].index = i;
+        flatChunks[i].total = flatChunks.length;
+    }
+
+    return flatChunks;
+}
+
+/** Simple function to extract all individual data chunks for logging */
+export function extractLogChunks<T>(input: T, maxChunkLength: number): Array<{ data: any, chunkId: string, index: number, total: number }> {
+    const hierarchicalChunks = generateChunks(input, maxChunkLength);
+    const flatChunks = flattenChunks(hierarchicalChunks);
+
+    return flatChunks.map(fc => ({
+        data: fc.data,
+        chunkId: fc.chunkId,
+        index: fc.index,
+        total: fc.total
+    }));
+}
+
+/** Reconstructs original data from log chunks */
+export function reconstructFromLogChunks(logChunks: Array<{ data: any, chunkId: string, index: number, total: number }>): any {
+    if (logChunks.length === 0) throw new Error("Cannot reconstruct from empty log chunks");
+
+    const sortedChunks = logChunks.sort((a, b) => a.index - b.index);
+
+    // Step 1: Group chunks by their content path
+    const contentGroups = new Map<string, typeof logChunks>();
+
+    for (const chunk of sortedChunks) {
+        // Parse the chunk ID to understand its structure
+        // map chunk indices to actual array indices
+        // Examples:
+        // "root0.mixedArray.c0" -> "root0.mixedArray.0" (chunk 0 = array index 0)
+        // "root0.mixedArray.c1.0.c0" -> "root0.mixedArray.1" (chunk 1 = array index 1)  
+        // "root0.mixedArray.c2.0.c0.objectInArray.c0" -> "root0.mixedArray.2.objectInArray"
+        // "root0.mixedArray.c3" -> "root0.mixedArray.3" (chunk 3 = array index 3)
+
+        let contentPath = chunk.chunkId;
+
+        // For array-related chunks, we need to replace the chunk index with the actual array index
+        // Pattern: mixedArray.cN where N is the chunk index, which is the array index
+        contentPath = contentPath.replace(/\.mixedArray\.c(\d+)(?:\.0)?/g, '.mixedArray.$1');
+
+        // Remove .cN.0 patterns (object access within array elements)
+        contentPath = contentPath.replace(/\.c\d+\.0\./g, '.').replace(/\.c\d+\./g, '.');
+
+        // Remove terminal chunk indices (.cN at the end)
+        contentPath = contentPath.replace(/\.c\d+$/, '');
+
+        if (!contentGroups.has(contentPath)) {
+            contentGroups.set(contentPath, []);
+        }
+        contentGroups.get(contentPath)!.push(chunk);
+    }
+
+    // Step 2: Reassemble chunked content
+    const reassembledContent = new Map<string, any>();
+
+    for (const [contentPath, chunks] of contentGroups) {
+        if (chunks.length === 1) {
+            // Single chunk
+            reassembledContent.set(contentPath, chunks[0].data);
+        } else {
+            // Multiple chunks: reassemble by finding the chunk sequence
+            const sortedChunks = chunks.sort((a, b) => {
+                const getLastChunkIndex = (chunkId: string) => {
+                    const matches = chunkId.match(/\.c(\d+)$/);
+                    if (matches) return parseInt(matches[1]);
+                    return 0;
+                };
+
+                return getLastChunkIndex(a.chunkId) - getLastChunkIndex(b.chunkId);
+            });
+
+            // Reassemble based on data
+            const firstData = sortedChunks[0].data;
+            if (typeof firstData === 'string') {
+                // String chunks: concatenate
+                reassembledContent.set(contentPath, sortedChunks.map(c => c.data as string).join(''));
+            } else if (Array.isArray(firstData)) {
+                // Array chunks: flatten
+                const reassembledArray: any[] = [];
+                for (const chunk of sortedChunks) {
+                    if (Array.isArray(chunk.data)) {
+                        reassembledArray.push(...chunk.data);
+                    }
+                }
+                reassembledContent.set(contentPath, reassembledArray);
+            } else {
+                // For other types use the first chunk's data
+                reassembledContent.set(contentPath, firstData);
+            }
+        }
+    }
+
+    // Step 3: Reconstruct the original data structure
+    const result: any = {};
+
+    // Sort paths to process root first then by specificity
+    const sortedPaths = Array.from(reassembledContent.keys()).sort((a, b) => {
+        const aDepth = a.split('.').length;
+        const bDepth = b.split('.').length;
+        if (aDepth !== bDepth) return aDepth - bDepth;
+        return a.localeCompare(b);
+    });
+
+    for (const contentPath of sortedPaths) {
+        const value = reassembledContent.get(contentPath)!;
+        const pathParts = contentPath.split('.');
+
+        if (pathParts.length === 1 && pathParts[0].startsWith('root')) {
+            // Root level: merge
+            if (typeof value === 'object' && !Array.isArray(value) && value !== null) {
+                Object.assign(result, value);
+            }
+        } else {
+            // Nested path: navigate and set value
+            const propertyPath = pathParts.slice(1);
+
+            let current = result;
+
+            for (let i = 0; i < propertyPath.length - 1; i++) {
+                const key = propertyPath[i];
+
+                if (!(key in current)) {
+                    const nextKey = propertyPath[i + 1];
+                    if (!isNaN(parseInt(nextKey))) current[key] = [];
+                    else current[key] = {};
+                }
+
+                current = current[key];
+            }
+
+            // Set the final value
+            const finalKey = propertyPath[propertyPath.length - 1];
+
+            if (!isNaN(parseInt(finalKey))) {
+                // Array index
+                const arrayIndex = parseInt(finalKey);
+                if (!Array.isArray(current)) {
+                    console.warn(`Expected array for index ${finalKey} but found ${typeof current}`);
+                    continue;
+                }
+
+                // Validate array length
+                while (current.length <= arrayIndex) current.push(undefined);
+
+                if (Array.isArray(value)) {
+                    // Array chunk: merge elements starting at the index
+                    for (let j = 0; j < value.length; j++) {
+                        if (current[arrayIndex + j] === undefined) current[arrayIndex + j] = value[j];
+                    }
+                } else {
+                    // value or object
+                    current[arrayIndex] = value;
+                }
+            } else {
+                // Object property
+                current[finalKey] = value;
+            }
+        }
+    }
+
+    return result;
 }
