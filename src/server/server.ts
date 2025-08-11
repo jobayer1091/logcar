@@ -147,12 +147,9 @@ async function transformReq(req: IncomingMessage): Promise<RequestTransformed> {
         }
     }
 
-    // Parse params, /download/:id -> {id: ...}
+    // Parse params
+    // will be populated by route matching
     const params: { [key: string]: any } = {};
-    const pathParts = urlParts.pathname.split("/").filter(Boolean);
-    for (const [index, part] of pathParts.entries()) {
-        if (part.startsWith(":")) params[part.slice(1)] = decodeURIComponent(pathParts[index + 1] || "");
-    }
 
     // Parse request body
     let body: { [key: string]: any } = {};
@@ -208,6 +205,30 @@ async function transformReq(req: IncomingMessage): Promise<RequestTransformed> {
     return Object.assign(req, { query, body, files, params });
 }
 
+/** Helper function to match a path against a route pattern and extract parameters */
+function matchRoute(routePattern: string, actualPath: string): { match: boolean, params: { [key: string]: string } } {
+    const params: { [key: string]: string } = {};
+
+    const routeSegments = routePattern.split('/').filter(Boolean);
+    const pathSegments = actualPath.split('/').filter(Boolean);
+
+    if (routeSegments.length !== pathSegments.length) return { match: false, params: {} };
+
+    for (let i = 0; i < routeSegments.length; i++) {
+        const routeSegment = routeSegments[i];
+        const pathSegment = pathSegments[i];
+
+        if (routeSegment.startsWith(':')) {
+            const paramName = routeSegment.slice(1);
+            params[paramName] = decodeURIComponent(pathSegment);
+        } else if (routeSegment !== pathSegment) {
+            return { match: false, params: {} };
+        }
+    }
+
+    return { match: true, params };
+}
+
 export class Server {
     private server;
     private options: ServerOptions;
@@ -244,11 +265,24 @@ export class Server {
             const transformedReq = await transformReq(req);
             const transformedRes = transformRes(res);
 
-            const handlers = handlerMethod.get(path);
-            if (handlers) {
-                for (const handler of handlers) {
-                    await handler(transformedReq, transformedRes);
+            let handlers = handlerMethod.get(path);
+            let matchedParams: { [key: string]: string } = {};
+
+            if (!handlers) {
+                // If no exact match then try pattern matching
+                for (const [routePattern, routeHandlers] of handlerMethod.entries()) {
+                    const matchResult = matchRoute(routePattern, path);
+                    if (!matchResult.match) continue;
+                    
+                    handlers = routeHandlers;
+                    matchedParams = matchResult.params;
+                    break;
                 }
+            }
+
+            if (handlers) {
+                Object.assign(transformedReq.params, matchedParams);
+                for (const handler of handlers) await handler(transformedReq, transformedRes);
             } else {
                 res.writeHead(404).end(`No handler found for ${method.toUpperCase()} ${path}`);
             }
