@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import util from "util";
 import zlib from "zlib";
-import { FileUpload } from "../server/server";
+import { FileUpload } from "../server/packages/server";
 
 const gzipAsync = util.promisify(zlib.gzip);
 const gunzipAsync = util.promisify(zlib.gunzip);
@@ -41,7 +41,6 @@ export type PackedFileData = {
 export async function packUploadedFileData(file: FileUpload): Promise<PackedFileData> {
     const hashHex = crypto.createHash("sha256").update(file.data).digest("hex");
 
-    // Convert to base64 first, then compress the base64 string (original working approach)
     const base64 = file.data.toString("base64");
     const compressedBase64 = await compressString(base64);
 

@@ -10,6 +10,16 @@ export const CONFIG = {
         /** Authentication token */
         auth: str("AUTH_TOKEN"),
     },
+
+    database: {
+        encryption: {
+            /** Whether to apply encryption by default */
+            enabled: str("DATABASE_ENCRYPTION_ENABLED") === "true",
+            /** Either encryption password or encryption key */
+            key: str("DATABASE_ENCRYPTION_KEY"),
+        },
+    },
+
     railway: {
         /** The GraphQL endpoint for the Railway backboard */
         backboard: http("RAILWAY_BACKBOARD_URL") || `https://backboard.railway.com/graphql/v2`,

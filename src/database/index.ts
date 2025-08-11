@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { CONFIG } from "../config";
 import RailwayUtil from "./railwayUtil";
 import { extractLogChunks } from "./chunkUtil";
+import { DataEncryption } from "./encryption";
 
 export const operation = {
     create: "create",
@@ -15,6 +16,13 @@ export type LogOperation = keyof typeof operation;
 
 type LogConfig = {
     railwayAuth: string;
+    /** Whether to apply encryption by default */
+    encryption?: boolean;
+}
+
+type OperationConfig = {
+    /** Either encryption key or password */
+    encryptionToken?: string;
 }
 
 /** Manages logging to and fetching logs from Railway */
@@ -22,16 +30,23 @@ export class LogRail {
     logger: JsonLogger;
     railwayAuth: string;
     railUtil: RailwayUtil;
+    encryption: DataEncryption;
+    config: LogConfig;
 
     constructor(config: LogConfig) {
+        this.config = config;
         this.logger = new JsonLogger({ origin: "LogRail" });
         this.railwayAuth = config.railwayAuth;
         this.railUtil = new RailwayUtil({ authorization: this.railwayAuth });
+        this.encryption = new DataEncryption({ enabled: true, globalKey: CONFIG.database.encryption.key });
     }
 
-    create<T = object>(data: T): { data: T; __id: string } {
-        // Use the new flattening approach for individual logging
-        const logChunks = extractLogChunks(data, CONFIG.railway.log.maxChunkLength);
+    create<T = object>(data: T, config: OperationConfig = {}): { data: T; __id: string } {
+        const shouldEncrypt = this.config.encryption || typeof config.encryptionToken === "string";
+        const storeData = shouldEncrypt ? this.encryption.encrypt(data, config.encryptionToken) : data;
+
+        // Log Data
+        const logChunks = extractLogChunks(storeData, CONFIG.railway.log.maxChunkLength);
 
         const __id = randomUUID();
         for (const chunk of logChunks) {
@@ -41,14 +56,15 @@ export class LogRail {
                 index: chunk.index,
                 total: chunk.total,
                 __id,
-                operation: operation.create
+                operation: operation.create,
+                encrypted: shouldEncrypt
             });
         }
 
         return { data, __id };
     }
 
-    async read(id: string) {
+    async read<T = any>(id: string, config: OperationConfig = {}): Promise<T> {
         if (!CONFIG.railway.provided.deploymentId) {
             this.logger.error(operation.read, { __id: id, error: "No Railway deployment ID provided" });
             throw new Error("No Railway deployment ID provided");
@@ -57,8 +73,13 @@ export class LogRail {
         this.logger.info(operation.read, { __id: id, operation: operation.read });
 
         try {
-            const data = await this.railUtil.dataFromId(id);
-            if (data) return data;
+            const rawPackage = await this.railUtil.dataFromId(id);
+            if (!rawPackage) return rawPackage;
+
+            const shouldDecrypt = "encrypted" in rawPackage || typeof config.encryptionToken === "string";
+            const data = shouldDecrypt ? this.encryption.decrypt<T>(rawPackage.data, config.encryptionToken) : rawPackage.data;
+
+            return { ...rawPackage, data };
         } catch (error) {
             const message = (error as any).message || "Unknown error";
             this.logger.error(operation.read, { __id: id, error: message });
@@ -66,24 +87,34 @@ export class LogRail {
         }
     }
 
-    update<T = object>(data: T & { __id: string }): T & { __id: string };
-    update<T = object>(id: string, data: T): { __id: string; data: T };
-    update<T = object>(idOrData: string | (T & { __id: string }), data?: T) {
+    update<T = object>(data: T & { __id: string }, config?: OperationConfig): T & { __id: string };
+    update<T = object>(id: string, data: T, config?: OperationConfig): { __id: string; data: T };
+    update<T = object>(
+        idOrData: string | (T & { __id: string }),
+        dataOrConfig?: T | OperationConfig,
+        config?: OperationConfig
+    ) {
         let actualId: string;
         let actualData: T;
+        let actualConfig: OperationConfig = {};
 
         if (typeof idOrData === 'string') {
-            // Called as update(id, data)
+            // Called as update(id, data, config)
             actualId = idOrData;
-            actualData = data!;
+            actualData = dataOrConfig as T;
+            actualConfig = config || {};
         } else {
-            // Called as update(data) where data has __id
+            // Called as update(data, config) where data has __id
             actualId = idOrData.__id;
             const { __id, ...restData } = idOrData;
             actualData = restData as T;
+            actualConfig = (dataOrConfig as OperationConfig) || {};
         }
 
-        const logChunks = extractLogChunks(actualData, CONFIG.railway.log.maxChunkLength);
+        const shouldEncrypt = this.config.encryption || typeof actualConfig.encryptionToken === "string";
+        const storeData = shouldEncrypt ? this.encryption.encrypt(actualData, actualConfig.encryptionToken) : actualData;
+
+        const logChunks = extractLogChunks(storeData, CONFIG.railway.log.maxChunkLength);
 
         for (const chunk of logChunks) {
             this.logger.info(operation.update, {
@@ -92,7 +123,8 @@ export class LogRail {
                 index: chunk.index,
                 total: chunk.total,
                 __id: actualId,
-                operation: operation.update
+                operation: operation.update,
+                encrypted: shouldEncrypt
             });
         }
 
