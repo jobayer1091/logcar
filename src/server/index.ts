@@ -20,12 +20,14 @@ app.get("/read", (req, res) => {
     if (!collectionId) return res.status(400).json({ error: "Bad Request: No collectionId provided" });
 
     const isRaw = req.query.raw == "true" || req.query.raw == "1";
+    const isText = req.query.text == "true" || req.query.text == "1";
 
     const logRail = new LogRail({ railwayAuth });
 
+    const send = isText ? res.send : res.json;
     logRail.read(collectionId).then((result) => {
-        if (isRaw) res.json(result.data);
-        else res.json(result);
+        if (isRaw) send(result.data);
+        else send(result);
     }).catch((error) => {
         const message = (error as any).message || "Unknown error";
         console.error("Error occurred during read operation:", error);
