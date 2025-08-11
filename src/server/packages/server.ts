@@ -17,7 +17,7 @@ type Method = keyof typeof method;
 type Handler = (req: RequestTransformed, res: ResponseTransformed) => any | Promise<any>;
 type Handlers = { [K in Method]: Map<string, Set<Handler>> };
 
-type ResponseTransformed = ServerResponse & {
+export type ResponseTransformed = ServerResponse & {
     json: (data: any) => void;
     status: (code: number) => ResponseTransformed;
     send: (body: any) => void;
@@ -31,7 +31,7 @@ export type FileUpload = {
     size: number;
 };
 
-type RequestTransformed = IncomingMessage & {
+export type RequestTransformed = IncomingMessage & {
     query: { [key: string]: any };
     body: { [key: string]: any };
     params: { [key: string]: any };

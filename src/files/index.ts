@@ -35,6 +35,7 @@ export type PackedFileData = {
     compressedSize: number;
     contentType: string;
     fileName: string;
+    isFile: true;
 }
 
 /** Packs an uploaded file with additional metadata and compresses the data */
@@ -59,7 +60,8 @@ export async function packUploadedFileData(file: FileUpload): Promise<PackedFile
         originalSize,
         compressedSize,
         contentType,
-        fileName
+        fileName,
+        isFile: true,
     };
 }
 
