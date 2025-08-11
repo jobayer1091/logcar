@@ -110,13 +110,12 @@ app.put("/update", (req, res) => {
 
     const encryptionToken = req.query.encryptionToken;
 
-    const { data } = req.body;
-    if (!data) return res.status(400).json({ error: "Bad Request: Missing data" });
+    if (!req.body || Object.keys(req.body).length === 0) return res.status(400).json({ error: "Bad Request: Missing data" });
 
     const logRail = new LogRail({ railwayAuth });
-    const result = logRail.update(id, data, { encryptionToken });
+    const result = logRail.update(id, req.body, { encryptionToken });
 
-    res.json(result);
+    res.json([result.__id]);
 })
 
 app.delete("/delete", (req, res) => {
