@@ -28,8 +28,8 @@ app.get("/read", (req, res) => {
     const railwayAuth = req.query.railwayApiKey || CONFIG.railway.apiKey;
     if (!railwayAuth) return res.status(400).json({ error: "Bad Request: No Railway API key provided" });
 
-    const collectionId = req.query.collectionId;
-    if (!collectionId) return res.status(400).json({ error: "Bad Request: No collectionId provided" });
+    const id = req.query.id;
+    if (!id) return res.status(400).json({ error: "Bad Request: No id provided" });
 
     const isRaw = req.query.raw == "true" || req.query.raw == "1";
     const isText = req.query.text == "true" || req.query.text == "1";
@@ -38,7 +38,7 @@ app.get("/read", (req, res) => {
     const logRail = new LogRail({ railwayAuth });
 
     const send = isText ? res.send : res.json;
-    logRail.read(collectionId, { encryptionToken }).then((result) => {
+    logRail.read(id, { encryptionToken }).then((result) => {
         if (isRaw) send(result.data);
         else send(result);
     }).catch((error) => {
@@ -55,10 +55,13 @@ app.put("/update", (req, res) => {
     const railwayAuth = req.query.railwayApiKey || CONFIG.railway.apiKey;
     if (!railwayAuth) return res.status(400).json({ error: "Bad Request: No Railway API key provided" });
 
+    const id = req.query.id;
+    if (!id) return res.status(400).json({ error: "Bad Request: No id provided" });
+
     const encryptionToken = req.query.encryptionToken;
 
-    const { id, data } = req.body;
-    if (!id || !data) return res.status(400).json({ error: "Bad Request: Missing id or data" });
+    const { data } = req.body;
+    if (!data) return res.status(400).json({ error: "Bad Request: Missing data" });
 
     const logRail = new LogRail({ railwayAuth });
     const result = logRail.update(id, data, { encryptionToken });
@@ -73,8 +76,8 @@ app.delete("/delete", (req, res) => {
     const railwayAuth = req.query.railwayApiKey || CONFIG.railway.apiKey;
     if (!railwayAuth) return res.status(400).json({ error: "Bad Request: No Railway API key provided" });
 
-    const { id } = req.body;
-    if (!id) return res.status(400).json({ error: "Bad Request: Missing id" });
+    const id = req.query.id;
+    if (!id) return res.status(400).json({ error: "Bad Request: No id provided" });
 
     const logRail = new LogRail({ railwayAuth });
     logRail.delete(id);
