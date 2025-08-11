@@ -6,6 +6,27 @@ import { FileUpload } from "../server/server";
 const gzipAsync = util.promisify(zlib.gzip);
 const gunzipAsync = util.promisify(zlib.gunzip);
 
+async function compressString(data: zlib.InputType): Promise<string> {
+    try {
+        const gzippedBuffer = await gzipAsync(data);
+        return gzippedBuffer.toString("base64");
+    } catch (error) {
+        console.error("Error compressing string:", error);
+        throw error;
+    }
+}
+
+async function decompressString(data: string): Promise<string> {
+    try {
+        const buffer = Buffer.from(data, "base64");
+        const gunzippedBuffer = await gunzipAsync(buffer);
+        return gunzippedBuffer.toString("utf-8");
+    } catch (error) {
+        console.error("Error decompressing string:", error);
+        throw error;
+    }
+}
+
 export type PackedFileData = {
     hash: string;
     data: string;
@@ -20,11 +41,12 @@ export type PackedFileData = {
 export async function packUploadedFileData(file: FileUpload): Promise<PackedFileData> {
     const hashHex = crypto.createHash("sha256").update(file.data).digest("hex");
 
-    const compressedBuffer = await gzipAsync(file.data);
-    const compressedBase64 = compressedBuffer.toString("base64");
+    // Convert to base64 first, then compress the base64 string (original working approach)
+    const base64 = file.data.toString("base64");
+    const compressedBase64 = await compressString(base64);
 
-    const originalSize = Buffer.byteLength(file.data);
-    const compressedSize = compressedBuffer.length;
+    const originalSize = file.data.length;
+    const compressedSize = Buffer.byteLength(compressedBase64, "utf8");
 
     const uploadDate = new Date().toISOString();
     const contentType = file.contentType;
@@ -43,27 +65,6 @@ export async function packUploadedFileData(file: FileUpload): Promise<PackedFile
 
 /** Decompress the data within a packaged filedata  */
 export async function decompressFileData(file: PackedFileData): Promise<PackedFileData> {
-    const compressedBuffer = Buffer.from(file.data, "base64");
-    const decompressedBuffer = await gunzipAsync(compressedBuffer);
-    const decompressedBase64 = decompressedBuffer.toString("base64");
-
-    return { ...file, data: decompressedBase64 };
-}
-
-/** Decompress file data and return as Buffer for direct download */
-export async function decompressFileDataToBuffer(file: PackedFileData): Promise<{ buffer: Buffer; metadata: Omit<PackedFileData, 'data'> }> {
-    const compressedBuffer = Buffer.from(file.data, "base64");
-    const decompressedBuffer = await gunzipAsync(compressedBuffer);
-
-    return {
-        buffer: decompressedBuffer,
-        metadata: {
-            hash: file.hash,
-            uploadDate: file.uploadDate,
-            originalSize: file.originalSize,
-            compressedSize: file.compressedSize,
-            contentType: file.contentType,
-            fileName: file.fileName
-        }
-    };
+    const decompressedData = await decompressString(file.data);
+    return { ...file, data: decompressedData };
 }

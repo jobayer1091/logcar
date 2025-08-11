@@ -1,6 +1,6 @@
 import { CONFIG } from "../config";
 import { LogRail } from "../database";
-import { decompressFileDataToBuffer, PackedFileData, packUploadedFileData } from "../files";
+import { decompressFileData, PackedFileData, packUploadedFileData } from "../files";
 import { isAuthenticated } from "./auth";
 import { Server } from "./server";
 
@@ -77,11 +77,14 @@ app.get("/download/:id", async (req, res) => {
 
     logRail.read(req.params.id).then(async (result) => {
         const packedFileData = result.data as PackedFileData;
-        const { buffer, metadata } = await decompressFileDataToBuffer(packedFileData);
+        const fileData = await decompressFileData(packedFileData);
 
-        res.setHeader("Content-Type", metadata.contentType);
-        res.setHeader("Content-Length", buffer.length);
-        res.setHeader("Content-Disposition", `attachment; filename="${metadata.fileName}"`);
+        const buffer = Buffer.from(fileData.data, "base64");
+        console.log(`Download: Original size: ${packedFileData.originalSize}, Decompressed buffer size: ${buffer.length}`);
+        
+        res.setHeader("Content-Type", fileData.contentType);
+        res.setHeader("Content-Length", buffer.length.toString());
+        res.setHeader("Content-Disposition", `attachment; filename="${fileData.fileName}"`);
         res.end(buffer);
     }).catch((error) => {
         const message = (error as any).message || "Unknown error";
