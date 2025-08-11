@@ -1,5 +1,6 @@
 import { CONFIG } from "../config";
 import { LogRail } from "../database";
+import { isAuthenticated } from "./auth";
 import { Server } from "./server";
 
 const app = new Server();
@@ -9,21 +10,18 @@ app.get("/", (req, res) => {
 })
 
 app.get("/read", (req, res) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) {
-        res.status(401).json({ error: "Unauthorized: No authorization header provided" });
-        return;
-    }
+    const hasAuth = isAuthenticated(req.headers.authorization || "");
+    if (!hasAuth) return res.status(401).json({ error: "Unauthorized" });
+
+    const railwayAuth = req.query.railwayApiKey || CONFIG.railway.apiKey;
+    if (!railwayAuth) return res.status(400).json({ error: "Bad Request: No Railway API key provided" });
 
     const collectionId = req.query.collectionId;
-    if (!collectionId) {
-        res.status(400).json({ error: "Bad Request: No collectionId provided" });
-        return;
-    }
+    if (!collectionId) return res.status(400).json({ error: "Bad Request: No collectionId provided" });
 
     const isRaw = req.query.raw == "true" || req.query.raw == "1";
 
-    const logRail = new LogRail({ railwayAuth: authHeader });
+    const logRail = new LogRail({ railwayAuth });
 
     logRail.read(collectionId).then((result) => {
         if (isRaw) res.json(result.data);
@@ -36,57 +34,48 @@ app.get("/read", (req, res) => {
 })
 
 app.post("/create", (req, res) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) {
-        res.status(401).json({ error: "Unauthorized: No authorization header provided" });
-        return;
-    }
+    const hasAuth = isAuthenticated(req.headers.authorization || "");
+    if (!hasAuth) return res.status(401).json({ error: "Unauthorized" });
+
+    const railwayAuth = req.query.railwayApiKey || CONFIG.railway.apiKey;
+    if (!railwayAuth) return res.status(400).json({ error: "Bad Request: No Railway API key provided" });
 
     const { data } = req.body;
-    if (!data) {
-        res.status(400).json({ error: "Bad Request: Missing data" });
-        return;
-    }
+    if (!data) return res.status(400).json({ error: "Bad Request: Missing data" });
 
-    const logRail = new LogRail({ railwayAuth: authHeader });
+    const logRail = new LogRail({ railwayAuth });
     const result = logRail.create(data);
 
     res.json(result);
 })
 
 app.put("/update", (req, res) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) {
-        res.status(401).json({ error: "Unauthorized: No authorization header provided" });
-        return;
-    }
+    const hasAuth = isAuthenticated(req.headers.authorization || "");
+    if (!hasAuth) return res.status(401).json({ error: "Unauthorized" });
+
+    const railwayAuth = req.query.railwayApiKey || CONFIG.railway.apiKey;
+    if (!railwayAuth) return res.status(400).json({ error: "Bad Request: No Railway API key provided" });
 
     const { id, data } = req.body;
-    if (!id || !data) {
-        res.status(400).json({ error: "Bad Request: Missing id or data" });
-        return;
-    }
+    if (!id || !data) return res.status(400).json({ error: "Bad Request: Missing id or data" });
 
-    const logRail = new LogRail({ railwayAuth: authHeader });
+    const logRail = new LogRail({ railwayAuth });
     const result = logRail.update(id, data);
 
     res.json(result);
 })
 
 app.delete("/delete", (req, res) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) {
-        res.status(401).json({ error: "Unauthorized: No authorization header provided" });
-        return;
-    }
+    const hasAuth = isAuthenticated(req.headers.authorization || "");
+    if (!hasAuth) return res.status(401).json({ error: "Unauthorized" });
+
+    const railwayAuth = req.query.railwayApiKey || CONFIG.railway.apiKey;
+    if (!railwayAuth) return res.status(400).json({ error: "Bad Request: No Railway API key provided" });
 
     const { id } = req.body;
-    if (!id) {
-        res.status(400).json({ error: "Bad Request: Missing id" });
-        return;
-    }
+    if (!id) return res.status(400).json({ error: "Bad Request: Missing id" });
 
-    const logRail = new LogRail({ railwayAuth: authHeader });
+    const logRail = new LogRail({ railwayAuth });
     logRail.delete(id);
 
     res.json({ success: true });

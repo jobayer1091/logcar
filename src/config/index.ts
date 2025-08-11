@@ -5,11 +5,17 @@ import JsonLogger from "../logger";
 export const CONFIG = {
     server: {
         /** The port the server runs on */
-        port: num("PORT") || 3000
+        port: num("PORT") || 3000,
+
+        /** Authentication token */
+        auth: str("AUTH_TOKEN"),
     },
     railway: {
         /** The GraphQL endpoint for the Railway backboard */
         backboard: http("RAILWAY_BACKBOARD_URL") || `https://backboard.railway.com/graphql/v2`,
+
+        /** Railway API token */
+        apiKey: str("RAILWAY_API_KEY"),
 
         /** Logging related configuration */
         log: {
