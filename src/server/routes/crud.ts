@@ -54,7 +54,7 @@ app.post("/create", async (req, res) => {
 
     const allIds: string[] = [];
 
-    if (req.body) {
+    if (req.body && Object.keys(req.body).length > 0) {
         const logRail = new LogRail({ railwayAuth });
         const result = logRail.create(req.body, { encryptionToken });
         allIds.push(result.__id);
@@ -91,7 +91,7 @@ app.get("/read", (req, res) => {
 
     const send = isText ? res.send : res.json;
     logRail.read(id, { encryptionToken }).then((result) => {
-        if ("isFile" in result) handleFileDownloads(result, res);
+        if ("isFile" in result.data) handleFileDownloads(result, res);
         else if (isRaw) send(result.data);
         else send(result);
     }).catch((error) => {
