@@ -23,7 +23,7 @@ type ResponseTransformed = ServerResponse & {
     send: (body: any) => void;
 }
 
-type FileUpload = {
+export type FileUpload = {
     fieldName: string;
     filename: string;
     contentType: string;
@@ -34,6 +34,7 @@ type FileUpload = {
 type RequestTransformed = IncomingMessage & {
     query: { [key: string]: any };
     body: { [key: string]: any };
+    params: { [key: string]: any };
     files: FileUpload[];
 };
 
@@ -123,28 +124,34 @@ function parseMultipart(buffer: Buffer, boundary: string): { fields: { [key: str
 }
 
 async function transformReq(req: IncomingMessage): Promise<RequestTransformed> {
-    const query: { [key: string]: any } = {};
+    if (!req.url) throw new Error("Invalid URL");
+
+    const decodedUrl = req.url
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+
+    const urlParts = new URL(decodedUrl, `http://${req.headers.host || 'localhost'}`);
 
     // Parse query parameters
-    if (req.url) {
-        const decodedUrl = req.url
-            .replace(/&amp;/g, '&')
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&quot;/g, '"')
-            .replace(/&#39;/g, "'")
-
-        const urlParts = new URL(decodedUrl, `http://${req.headers.host || 'localhost'}`);
-        const searchParams = urlParts.searchParams;
-
-        for (const [key, value] of searchParams.entries()) {
-            if (query[key]) {
-                if (Array.isArray(query[key])) query[key].push(value);
-                else query[key] = [query[key], value];
-            } else {
-                query[key] = value;
-            }
+    const query: { [key: string]: any } = {};
+    const searchParams = urlParts.searchParams;
+    for (const [key, value] of searchParams.entries()) {
+        if (query[key]) {
+            if (Array.isArray(query[key])) query[key].push(value);
+            else query[key] = [query[key], value];
+        } else {
+            query[key] = value;
         }
+    }
+
+    // Parse params, /download/:id -> {id: ...}
+    const params: { [key: string]: any } = {};
+    const pathParts = urlParts.pathname.split("/").filter(Boolean);
+    for (const [index, part] of pathParts.entries()) {
+        if (part.startsWith(":")) params[part.slice(1)] = decodeURIComponent(pathParts[index + 1] || "");
     }
 
     // Parse request body
@@ -198,7 +205,7 @@ async function transformReq(req: IncomingMessage): Promise<RequestTransformed> {
         }
     }
 
-    return Object.assign(req, { query, body, files });
+    return Object.assign(req, { query, body, files, params });
 }
 
 export class Server {
